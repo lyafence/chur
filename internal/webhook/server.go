@@ -1,0 +1,147 @@
+package webhook
+
+import (
+	"encoding/json"
+	"fmt"
+	"log/slog"
+	"net/http"
+
+	admissionv1 "k8s.io/api/admission/v1"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/serializer"
+)
+
+var (
+	runtimeScheme = runtime.NewScheme()
+	codecFactory  = serializer.NewCodecFactory(runtimeScheme)
+	deserializer  = codecFactory.UniversalDeserializer()
+)
+
+func init() {
+	_ = corev1.AddToScheme(runtimeScheme)
+	_ = admissionv1.AddToScheme(runtimeScheme)
+}
+
+type Server struct{}
+
+func NewServer() (*Server, error) {
+	return &Server{}, nil
+}
+
+func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	slog.Info("admission review received", "path", r.URL.Path)
+
+	var review admissionv1.AdmissionReview
+	if err := json.NewDecoder(r.Body).Decode(&review); err != nil {
+		http.Error(w, fmt.Sprintf("failed to decode: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	resp := s.mutate(&review)
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		slog.Error("failed to encode admission response", "error", err)
+	}
+}
+
+func (s *Server) mutate(review *admissionv1.AdmissionReview) *admissionv1.AdmissionReview {
+	resp := &admissionv1.AdmissionReview{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "admission.k8s.io/v1",
+			Kind:       "AdmissionReview",
+		},
+	}
+
+	if review.Request == nil {
+		resp.Response = &admissionv1.AdmissionResponse{
+			Allowed: false,
+			Result: &metav1.Status{
+				Code:    http.StatusBadRequest,
+				Message: "admission request is missing",
+			},
+		}
+		return resp
+	}
+
+	resp.Response = &admissionv1.AdmissionResponse{UID: review.Request.UID}
+
+	if !isPodRequest(review.Request.Kind) {
+		slog.Error("invalid request kind", "kind", review.Request.Kind)
+		resp.Response.Allowed = false
+		resp.Response.Result = &metav1.Status{
+			Code:    http.StatusBadRequest,
+			Message: fmt.Sprintf("unexpected resource kind: %s", kindString(review.Request.Kind)),
+		}
+		return resp
+	}
+
+	pod := &corev1.Pod{}
+	if _, _, err := deserializer.Decode(review.Request.Object.Raw, nil, pod); err != nil {
+		slog.Error("failed to decode pod", "error", err)
+		resp.Response.Allowed = false
+		resp.Response.Result = &metav1.Status{
+			Code:    http.StatusBadRequest,
+			Message: fmt.Sprintf("failed to decode pod: %v", err),
+		}
+		return resp
+	}
+
+	patch, err := MutatePod(pod)
+	if err != nil {
+		slog.Error("failed to mutate pod", "pod", pod.Name, "namespace", pod.Namespace, "error", err)
+		resp.Response.Allowed = false
+		resp.Response.Result = &metav1.Status{
+			Code:    http.StatusInternalServerError,
+			Message: fmt.Sprintf("failed to mutate pod: %v", err),
+		}
+		return resp
+	}
+
+	// No mutation needed (pod lacks chur annotations).
+	if patch == nil {
+		resp.Response.Allowed = true
+		return resp
+	}
+
+	// Dry-run: return Allowed without patches. Webhooks must not actuate
+	// side effects (init container creation, file writes) during dry-run.
+	if review.Request.DryRun != nil && *review.Request.DryRun {
+		slog.Info("dry-run request, skipping mutation",
+			"pod", pod.Name, "namespace", pod.Namespace)
+		resp.Response.Allowed = true
+		return resp
+	}
+
+	patchBytes, err := json.Marshal(patch)
+	if err != nil {
+		slog.Error("failed to marshal patch", "error", err)
+		resp.Response.Allowed = false
+		resp.Response.Result = &metav1.Status{
+			Code:    http.StatusInternalServerError,
+			Message: fmt.Sprintf("failed to marshal patch: %v", err),
+		}
+		return resp
+	}
+
+	pt := admissionv1.PatchTypeJSONPatch
+	resp.Response.Allowed = true
+	resp.Response.Patch = patchBytes
+	resp.Response.PatchType = &pt
+	return resp
+}
+
+func isPodRequest(kind metav1.GroupVersionKind) bool {
+	return kind.Group == "" && kind.Version == "v1" && kind.Kind == "Pod"
+}
+
+func kindString(kind metav1.GroupVersionKind) string {
+	return fmt.Sprintf("%s/%s %s", kind.Group, kind.Version, kind.Kind)
+}

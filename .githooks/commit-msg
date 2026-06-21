@@ -1,0 +1,9 @@
+#!/bin/sh
+msg=$(cat "$1")
+
+if ! echo "$msg" | grep -qE '^(feat|fix|docs|refactor|test|chore|ci|security)(\(.+\))?: .+'; then
+  echo "ERROR: commit message must follow conventional format"
+  echo "  allowed: feat, fix, docs, refactor, test, chore, ci, security"
+  echo "  example: fix(webhook): correct nil pointer in mutate"
+  exit 1
+fi

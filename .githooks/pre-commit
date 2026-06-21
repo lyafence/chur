@@ -1,0 +1,13 @@
+#!/bin/sh
+set -e
+
+echo "🔍 pre-commit: checking Go formatting..."
+
+unformatted=$(gofmt -l .)
+if [ -n "$unformatted" ]; then
+  echo "ERROR: unformatted Go files:"
+  echo "$unformatted"
+  exit 1
+fi
+
+echo "✅ format OK"

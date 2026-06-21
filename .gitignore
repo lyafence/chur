@@ -1,0 +1,44 @@
+# Ignore all JSON configs (may contain secrets)
+*.json
+
+# Except example configs
+!*example.json
+
+# Secrets and credentials
+*.token
+credentials.json
+.env
+*.pem
+*.key
+*.jks
+*.keystore
+
+# Build artifacts
+bin/
+build/
+dist/
+release/
+target/
+/init
+*.exe
+*.tmp
+*~
+.DS_Store
+*.zip
+*.tar.gz
+*.log
+coverage.out
+
+# Go-specific
+vendor/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+Thumbs.db
+.DS_Store

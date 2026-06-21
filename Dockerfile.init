@@ -1,0 +1,22 @@
+FROM golang:1.26-alpine AS builder
+
+RUN apk add --no-cache git ca-certificates && \
+    addgroup -S -g 1001 churgroup && \
+    adduser -S -u 1001 -G churgroup churuser
+
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+
+ARG BUILD_TAGS=""
+RUN CGO_ENABLED=0 go build -tags "${BUILD_TAGS}" -ldflags="-s -w" -o /bin/chur-init ./cmd/init
+
+FROM scratch
+COPY --from=builder /etc/passwd /etc/passwd
+COPY --from=builder /etc/group /etc/group
+COPY --from=builder /etc/ssl/certs /etc/ssl/certs
+COPY --from=builder /bin/chur-init /chur-init
+
+USER churuser
+ENTRYPOINT ["/chur-init"]

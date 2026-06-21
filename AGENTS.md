@@ -1,0 +1,141 @@
+# chur — Agent Instructions
+
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `make build` | Build both binaries (webhook + init) |
+| `make build-webhook` | Build chur-webhook only |
+| `make build-init` | Build chur-init only |
+| `make lint` | Run golangci-lint |
+| `make test` | Run tests |
+| `make check` | Full verification: lint → test → build |
+| `make clean` | Remove build artifacts |
+| `make docker` | Build all Docker images |
+| `make docker-webhook` | Build webhook image |
+| `make docker-init` | Build init image |
+
+## Package Map
+
+| Directory | Responsibility |
+|-----------|---------------|
+| `cmd/webhook/` | Webhook entrypoint (HTTP server, TLS) |
+| `cmd/init/` | Init container entrypoint (secret fetching) |
+| `internal/webhook/` | Admission review handling, pod mutation, TLS |
+| `internal/provider/` | SecretProvider interface + Factory registry |
+| `internal/providers/env/` | Environment variable provider |
+| `internal/providers/local/` | Local file provider (bare-metal) |
+| `internal/providers/k8s/` | Kubernetes Secret provider |
+| `internal/validate/` | Input validation (filename-safe refs, secret keys) |
+| `test/e2e/` | End-to-end tests |
+
+## Architecture
+
+```
+Pod create request
+       │
+       ▼
+chur-webhook (MutatingWebhookConfiguration)
+       │
+       ├── Parse annotations (chur.io/provider, chur.io/secret-ref)
+       ├── Add emptyDir volume (medium: Memory)
+       ├── Add chur-init init container
+       └── Mount tmpfs to all containers
+       
+Pod starts
+       │
+       ▼
+chur-init runs first
+       │
+       ├── Read CHUR_PROVIDER from env
+       ├── Factory.Get(provider) → lazy init
+       ├── SecretProvider.GetSecret(ref) → []byte
+       └── Write to tmpfs mount
+       
+App container runs
+       │
+       ▼
+Read secret from /secrets/<ref> (tmpfs)
+```
+
+## Design Invariants
+
+- Secrets never touch disk — tmpfs only (medium: Memory)
+- Secrets never appear in env vars of app container
+- Provider selection is annotation-driven, zero code changes
+- Factory pattern with lazy init — no cloud SDK loaded unless needed
+- All providers implement the same `SecretProvider` interface
+
+## Coding Conventions
+
+- Errors are always checked and wrapped with context.
+- No global state (provider registry is the only exception, documented).
+- Tests: table-driven, parallel-safe.
+- `.env.example` documents all required environment variables.
+- `.editorconfig` enforces consistent formatting.
+
+## Agent Constraints
+
+- **NEVER commit or push** without explicit command.
+- Destructive git operations: ask first.
+
+## Anti-Patterns
+
+- **YAGNI** — don't add providers "just in case". Add when needed.
+- **Global state creep** — the provider registry is justified; any other global state needs documentation.
+- **SDK bloat** — prefer lightweight HTTP clients over full cloud SDKs where possible.
+
+## Roadmap
+
+### Phase 1: Core MVP — Base Providers + Webhook
+
+**1a: Provider Implementations + Unit Tests**
+- `env`: GetSecret reads `os.Getenv`. Test: set env var → get value.
+- `local`: GetSecret reads a file from disk. Test: temp file → read → cleanup.
+- `k8s`: GetSecret via InClusterConfig + client-go. Test: fake clientset (`k8s.io/client-go/testing`).
+- Exponential backoff retry — network may not be ready immediately in init containers.
+
+**1b: Webhook — Mutation Logic**
+- Full `MutatePod` implementation: parse annotations → JSON Patch (tmpfs + init container + mount).
+- TLS: self-signed cert for dev mode.
+- Test: unit-test JSON patches on raw Pod manifests (no K8s API needed).
+
+**1c: End-to-End with Kind**
+- `test/e2e/e2e_test.go`: Kind cluster → deploy webhook → deploy annotated Pod → verify secret in tmpfs.
+- Make target: `make e2e` (Kind up → test → cleanup).
+
+### Phase 2: Cloud Providers — AWS + GCP + Azure
+
+**2a: AWS Provider** (`internal/provider/providers/aws/`)
+- `aws-sdk-go-v2` (Secrets Manager), IRSA (sts.AssumeRoleProvider)
+- Build tag: `go build -tags aws` — SDK only in cloud builds
+- Test: LocalStack in docker-compose
+
+**2b: GCP Provider** (`internal/provider/providers/gcp/`)
+- GCP Secret Manager SDK, Workload Identity Federation
+- Test: fake GCP server
+
+**2c: Azure Provider** (`internal/provider/providers/azure/`)
+- `azure-sdk-for-go` (Key Vault), Managed Identity
+- Test: Azurite
+
+### Phase 3: Enterprise Features
+
+**3a: Sidecar Hot-Reload** — inotify + polling, update secrets without Pod restart. Annotation `chur.io/reload: "30s"`.
+
+**3b: Observability** — structured JSON logs, Prometheus metrics (`chur_secret_injections_total`, `chur_injection_duration_seconds`), `/metrics` endpoint.
+
+**3c: Security Hardening** — secret size limits, allowed namespaces, audit logging.
+
+### Phase Architecture
+
+```
+Phase 1                Phase 2                Phase 3
+┌──────────────┐      ┌──────────────┐       ┌──────────────┐
+│  env         │      │  aws         │       │  sidecar     │
+│  local       │      │  gcp         │       │  hot-reload  │
+│  k8s         │ ───► │  azure       │ ───►  │  prometheus  │
+│  webhook     │      │  vault       │       │  audit       │
+│  mutation    │      │  build tags  │       │  hardening   │
+└──────────────┘      └──────────────┘       └──────────────┘
+```

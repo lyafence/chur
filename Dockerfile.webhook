@@ -1,0 +1,19 @@
+FROM golang:1.26-trixie AS builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates && \
+    groupadd --system --gid 1001 churgroup && \
+    useradd --system --uid 1001 --gid churgroup --no-create-home --shell /sbin/nologin churuser && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+
+ARG BUILD_TAGS=""
+RUN CGO_ENABLED=0 go build -tags "${BUILD_TAGS}" -ldflags="-s -w" -o /bin/chur-webhook ./cmd/webhook
+
+FROM gcr.io/distroless/static-debian13:nonroot
+COPY --from=builder /bin/chur-webhook /chur-webhook
+
+ENTRYPOINT ["/chur-webhook"]
