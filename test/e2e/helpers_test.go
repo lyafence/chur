@@ -98,7 +98,25 @@ func createWebhookDeployment(t *testing.T, cs kubernetes.Interface, ns, name str
 					Containers: []corev1.Container{{
 						Name:  name,
 						Image: "chur-webhook:dev",
-						Ports: []corev1.ContainerPort{{ContainerPort: 8443}},
+						Ports: []corev1.ContainerPort{
+							{ContainerPort: 8443},
+							{ContainerPort: 8080},
+						},
+						Env: []corev1.EnvVar{{
+							Name:  "CHUR_INIT_IMAGE",
+							Value: "chur-init:dev",
+						}},
+						ReadinessProbe: &corev1.Probe{
+							ProbeHandler: corev1.ProbeHandler{
+								HTTPGet: &corev1.HTTPGetAction{
+									Path:   "/healthz",
+									Port:   intstr.FromInt32(8080),
+									Scheme: corev1.URISchemeHTTP,
+								},
+							},
+							InitialDelaySeconds: 1,
+							PeriodSeconds:       3,
+						},
 						VolumeMounts: []corev1.VolumeMount{{
 							Name:      "tls",
 							MountPath: "/etc/chur/tls",
@@ -251,11 +269,13 @@ func waitForPodReady(t *testing.T, cs kubernetes.Interface, ns, name string, tim
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
+	var lastPod *corev1.Pod
 	err := wait.PollUntilContextTimeout(ctx, 1*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
 		pod, err := cs.CoreV1().Pods(ns).Get(ctx, name, metav1.GetOptions{})
 		if err != nil {
 			return false, nil
 		}
+		lastPod = pod
 		if pod.Status.Phase == corev1.PodPending {
 			return false, nil
 		}
@@ -267,22 +287,39 @@ func waitForPodReady(t *testing.T, cs kubernetes.Interface, ns, name string, tim
 			}
 		}
 		for _, init := range pod.Status.InitContainerStatuses {
-			if init.State.Waiting != nil && init.State.Waiting.Reason == "CrashLoopBackOff" {
-				return false, fmt.Errorf("init container %s: CrashLoopBackOff: %s", init.Name, init.State.Waiting.Message)
+			if init.State.Waiting != nil {
+				reason := init.State.Waiting.Reason
+				msg := init.State.Waiting.Message
+				if reason == "CrashLoopBackOff" || reason == "ImagePullBackOff" || reason == "ErrImagePull" {
+					return false, fmt.Errorf("init container %s: %s: %s", init.Name, reason, msg)
+				}
 			}
 		}
 		return false, nil
 	})
 	if err != nil {
-		logs, logErr := cs.CoreV1().Pods(ns).GetLogs(name, &corev1.PodLogOptions{}).DoRaw(ctx)
+		logCtx := context.Background()
+		logs, logErr := cs.CoreV1().Pods(ns).GetLogs(name, &corev1.PodLogOptions{}).DoRaw(logCtx)
 		if logErr == nil {
 			t.Logf("pod %s logs:\n%s", name, string(logs))
 		}
 		initLogs, logErr := cs.CoreV1().Pods(ns).GetLogs(name, &corev1.PodLogOptions{
 			Container: "chur-init",
-		}).DoRaw(ctx)
+		}).DoRaw(logCtx)
 		if logErr == nil {
 			t.Logf("init container logs:\n%s", string(initLogs))
+		}
+		if lastPod != nil {
+			t.Logf("pod status: phase=%s containers=%d init_containers=%d",
+				lastPod.Status.Phase, len(lastPod.Status.ContainerStatuses), len(lastPod.Status.InitContainerStatuses))
+			for _, init := range lastPod.Status.InitContainerStatuses {
+				if init.State.Waiting != nil {
+					t.Logf("init %s: waiting reason=%s message=%s", init.Name, init.State.Waiting.Reason, init.State.Waiting.Message)
+				}
+				if init.State.Terminated != nil {
+					t.Logf("init %s: terminated reason=%s exit=%d message=%s", init.Name, init.State.Terminated.Reason, init.State.Terminated.ExitCode, init.State.Terminated.Message)
+				}
+			}
 		}
 		t.Fatalf("pod %s not ready within %v: %v", name, timeout, err)
 	}

@@ -5,6 +5,8 @@ import (
 
 	"github.com/lyafence/chur/internal/validate"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/utils/ptr"
 )
 
 const (
@@ -21,12 +23,43 @@ type PatchOperation struct {
 	Value interface{} `json:"value,omitempty"`
 }
 
+// Config holds the mutable configuration for the webhook mutator.
+type Config struct {
+	VolumeSizeLimit   resource.Quantity
+	AllowedNamespaces []string
+	InitImage         string
+}
+
+// DefaultConfig returns a Config with safe defaults.
+func DefaultConfig() *Config {
+	return &Config{
+		VolumeSizeLimit: resource.MustParse("10Mi"),
+		InitImage:       "ghcr.io/lyafence/chur-init:latest",
+	}
+}
+
 // MutatePod adds a tmpfs volume and init container to the pod spec when the
 // chur annotations are present. It returns nil, nil when no mutation is
 // required. All user-controlled values are strictly validated before use.
-func MutatePod(pod *corev1.Pod) ([]PatchOperation, error) {
+func MutatePod(pod *corev1.Pod, cfg *Config) ([]PatchOperation, error) {
 	if pod == nil || pod.Annotations == nil {
 		return nil, nil
+	}
+	if cfg == nil {
+		cfg = DefaultConfig()
+	}
+
+	if len(cfg.AllowedNamespaces) > 0 {
+		allowed := false
+		for _, ns := range cfg.AllowedNamespaces {
+			if pod.Namespace == ns {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			return nil, nil
+		}
 	}
 
 	provider, ok := pod.Annotations[annotationProvider]
@@ -51,6 +84,9 @@ func MutatePod(pod *corev1.Pod) ([]PatchOperation, error) {
 	if mountPath == "" {
 		mountPath = "/secrets"
 	}
+	if err := validate.ValidateMountPath(mountPath); err != nil {
+		return nil, fmt.Errorf("invalid %s: %w", annotationMount, err)
+	}
 
 	volName := "chur-secrets"
 	patches := []PatchOperation{}
@@ -64,7 +100,8 @@ func MutatePod(pod *corev1.Pod) ([]PatchOperation, error) {
 				Name: volName,
 				VolumeSource: corev1.VolumeSource{
 					EmptyDir: &corev1.EmptyDirVolumeSource{
-						Medium: corev1.StorageMediumMemory,
+						Medium:    corev1.StorageMediumMemory,
+						SizeLimit: &cfg.VolumeSizeLimit,
 					},
 				},
 			}},
@@ -77,7 +114,8 @@ func MutatePod(pod *corev1.Pod) ([]PatchOperation, error) {
 				Name: volName,
 				VolumeSource: corev1.VolumeSource{
 					EmptyDir: &corev1.EmptyDirVolumeSource{
-						Medium: corev1.StorageMediumMemory,
+						Medium:    corev1.StorageMediumMemory,
+						SizeLimit: &cfg.VolumeSizeLimit,
 					},
 				},
 			},
@@ -96,10 +134,19 @@ func MutatePod(pod *corev1.Pod) ([]PatchOperation, error) {
 	// Add the chur-init init container, creating the array if necessary.
 	initContainer := corev1.Container{
 		Name:            "chur-init",
-		Image:           "ghcr.io/lyafence/chur-init:latest",
+		Image:           cfg.InitImage,
 		ImagePullPolicy: corev1.PullIfNotPresent,
 		Command:         []string{"/chur-init"},
-		Env:             initEnv,
+		SecurityContext: &corev1.SecurityContext{
+			RunAsNonRoot:             ptr.To(true),
+			RunAsUser:                ptr.To[int64](1001),
+			ReadOnlyRootFilesystem:   ptr.To(true),
+			AllowPrivilegeEscalation: ptr.To(false),
+			Capabilities: &corev1.Capabilities{
+				Drop: []corev1.Capability{"ALL"},
+			},
+		},
+		Env: initEnv,
 		VolumeMounts: []corev1.VolumeMount{
 			{Name: volName, MountPath: mountPath},
 		},

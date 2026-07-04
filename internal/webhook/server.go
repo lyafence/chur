@@ -13,21 +13,19 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 )
 
-var (
-	runtimeScheme = runtime.NewScheme()
-	codecFactory  = serializer.NewCodecFactory(runtimeScheme)
-	deserializer  = codecFactory.UniversalDeserializer()
-)
-
-func init() {
-	_ = corev1.AddToScheme(runtimeScheme)
-	_ = admissionv1.AddToScheme(runtimeScheme)
+type Server struct {
+	cfg          *Config
+	deserializer runtime.Decoder
 }
 
-type Server struct{}
-
-func NewServer() (*Server, error) {
-	return &Server{}, nil
+func NewServer(cfg *Config) (*Server, error) {
+	scheme := runtime.NewScheme()
+	_ = corev1.AddToScheme(scheme)
+	_ = admissionv1.AddToScheme(scheme)
+	return &Server{
+		cfg:          cfg,
+		deserializer: serializer.NewCodecFactory(scheme).UniversalDeserializer(),
+	}, nil
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -84,7 +82,7 @@ func (s *Server) mutate(review *admissionv1.AdmissionReview) *admissionv1.Admiss
 	}
 
 	pod := &corev1.Pod{}
-	if _, _, err := deserializer.Decode(review.Request.Object.Raw, nil, pod); err != nil {
+	if _, _, err := s.deserializer.Decode(review.Request.Object.Raw, nil, pod); err != nil {
 		slog.Error("failed to decode pod", "error", err)
 		resp.Response.Allowed = false
 		resp.Response.Result = &metav1.Status{
@@ -94,7 +92,7 @@ func (s *Server) mutate(review *admissionv1.AdmissionReview) *admissionv1.Admiss
 		return resp
 	}
 
-	patch, err := MutatePod(pod)
+	patch, err := MutatePod(pod, s.cfg)
 	if err != nil {
 		slog.Error("failed to mutate pod", "pod", pod.Name, "namespace", pod.Namespace, "error", err)
 		resp.Response.Allowed = false
@@ -144,4 +142,22 @@ func isPodRequest(kind metav1.GroupVersionKind) bool {
 
 func kindString(kind metav1.GroupVersionKind) string {
 	return fmt.Sprintf("%s/%s %s", kind.Group, kind.Version, kind.Kind)
+}
+
+// HealthHandler returns an HTTP handler with /healthz and /readyz endpoints.
+func HealthHandler() http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/healthz", healthz)
+	mux.HandleFunc("/readyz", healthz)
+	return mux
+}
+
+func healthz(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(`{"status":"ok"}`))
 }

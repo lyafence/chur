@@ -14,6 +14,9 @@
 | `make docker` | Build all Docker images |
 | `make docker-webhook` | Build webhook image |
 | `make docker-init` | Build init image |
+| `make e2e` | End-to-end tests (Kind → deploy → verify) |
+| `make release` | Build native binary tarball (local/CI quick release) |
+| `goreleaser release` | Full cross-platform release + Docker images |
 
 ## Package Map
 

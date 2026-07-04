@@ -43,6 +43,41 @@ func TestValidateSecretRef(t *testing.T) {
 	}
 }
 
+func TestValidateMountPath(t *testing.T) {
+	tests := []struct {
+		name    string
+		path    string
+		wantErr bool
+	}{
+		{"empty", "", false},
+		{"root", "/", false},
+		{"simple", "/secrets", false},
+		{"nested", "/etc/secrets", false},
+		{"with-dash", "/path/with-dash", false},
+		{"with-dot", "/path/with.dot", false},
+		{"long-path", "/" + strings.Repeat("a/b/", 100) + "end", false},
+		{"relative", "relative/path", true},
+		{"dotdot", "/etc/../secrets", true},
+		{"traversal", "/../../etc", true},
+		{"space", "/path/with space", true},
+		{"semicolon", "/path/with;chars", true},
+		{"special", "/path/with!special", true},
+		{"too-long", "/" + strings.Repeat("a", 4096), true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateMountPath(tt.path)
+			if tt.wantErr && err == nil {
+				t.Fatalf("expected error for %q", tt.path)
+			}
+			if !tt.wantErr && err != nil {
+				t.Fatalf("unexpected error for %q: %v", tt.path, err)
+			}
+		})
+	}
+}
+
 func TestValidateSecretKey(t *testing.T) {
 	tests := []struct {
 		name    string

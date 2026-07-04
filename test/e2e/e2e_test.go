@@ -72,6 +72,11 @@ func TestE2E(t *testing.T) {
 
 	waitForDeploymentReady(t, clientset, ns, hookName, 2*time.Minute)
 
+	// --- Wait for service endpoints to propagate ---------------------------
+	// kube-apiserver needs to discover the service endpoints before the
+	// MutatingWebhookConfiguration can route to the webhook.
+	time.Sleep(3 * time.Second)
+
 	// --- MutatingWebhookConfiguration --------------------------------------
 
 	cleanupMWC := createMutatingWebhook(t, clientset, hookName, ns, certPEM)

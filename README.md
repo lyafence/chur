@@ -87,7 +87,56 @@ chur-webhook intercepts the Pod, injects an `emptyDir` with `medium: Memory`
 and a `chur-init` init container that fetches the secret and writes it to tmpfs.
 The application reads the secret from `/secrets/<ref>` (e.g. `/secrets/db-credentials`).
 
-See `.env.example` for all supported environment variables.
+> **Note:** In Phase 1, secrets are fetched once at Pod startup. To rotate
+> secrets, restart the Pod (e.g. via `kubectl rollout restart`). Hot-reload
+> is planned for Phase 3.
+
+## Configuration
+
+Main environment variables (see [`.env.example`](./.env.example) for the full list):
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CHUR_LISTEN` | `:8443` | Webhook listen address (admission) |
+| `CHUR_HEALTH_LISTEN` | `:8080` | Webhook listen address (health probes) |
+| `CHUR_TLS_MODE` | `dev` | TLS mode: `dev` or `prod` |
+| `CHUR_VOLUME_SIZE_LIMIT` | `10Mi` | Max size of tmpfs volume per pod |
+| `CHUR_ALLOWED_NAMESPACES` | (all) | Comma-separated allowlist of namespaces |
+| `CHUR_INIT_IMAGE` | `ghcr.io/lyafence/chur-init:latest` | Init container image |
+| `CHUR_PROVIDER` | `env` | Secret provider: `env`, `local`, `k8s` |
+| `CHUR_MAX_SECRET_SIZE` | `1Mi` | Max secret size in init container |
+
+## RBAC Requirements
+
+When using the `k8s` provider, the init container reads Secrets via the
+Kubernetes API. The Pod's ServiceAccount must have a Role binding with
+`get` access to Secrets in the target namespace:
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: chur-secret-reader
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: chur-secret-reader
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: chur-secret-reader
+subjects:
+- kind: ServiceAccount
+  name: default
+```
+
+For production, consider restricting access to specific secrets via
+`resourceNames` in the Role.
 
 ## License
 

@@ -13,6 +13,7 @@ import (
 	_ "github.com/lyafence/chur/internal/providers/k8s"
 	_ "github.com/lyafence/chur/internal/providers/local"
 	"github.com/lyafence/chur/internal/validate"
+	"k8s.io/apimachinery/pkg/api/resource"
 )
 
 var version = "dev"
@@ -53,6 +54,21 @@ func main() {
 	secret, err := backoffFetch(ctx, factory, secretRef)
 	if err != nil {
 		slog.Error("failed to get secret", "ref", secretRef, "error", err)
+		os.Exit(1)
+	}
+
+	maxSizeStr := os.Getenv("CHUR_MAX_SECRET_SIZE")
+	if maxSizeStr == "" {
+		maxSizeStr = "1Mi"
+	}
+	maxBytes, err := resource.ParseQuantity(maxSizeStr)
+	if err != nil {
+		slog.Error("invalid CHUR_MAX_SECRET_SIZE", "value", maxSizeStr, "error", err)
+		os.Exit(1)
+	}
+	if int64(len(secret)) > maxBytes.Value() {
+		slog.Error("secret exceeds max size",
+			"ref", secretRef, "size", len(secret), "max", maxBytes.String())
 		os.Exit(1)
 	}
 

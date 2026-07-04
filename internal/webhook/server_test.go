@@ -13,6 +13,15 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
+func newTestServer(t *testing.T) *Server {
+	t.Helper()
+	srv, err := NewServer(DefaultConfig())
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+	return srv
+}
+
 func mustEncodePod(t *testing.T, pod *corev1.Pod) []byte {
 	t.Helper()
 	obj, err := runtime.DefaultUnstructuredConverter.ToUnstructured(pod)
@@ -57,7 +66,7 @@ func TestServer_Mutate_AllowsPod(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/mutate", bytes.NewReader(body))
 	rec := httptest.NewRecorder()
 
-	srv := &Server{}
+	srv := newTestServer(t)
 	srv.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
@@ -99,7 +108,7 @@ func TestServer_Mutate_DeniesNonPod(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/mutate", bytes.NewReader(body))
 	rec := httptest.NewRecorder()
 
-	srv := &Server{}
+	srv := newTestServer(t)
 	srv.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
@@ -132,7 +141,7 @@ func TestServer_Mutate_DeniesInvalidPodObject(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/mutate", bytes.NewReader(body))
 	rec := httptest.NewRecorder()
 
-	srv := &Server{}
+	srv := newTestServer(t)
 	srv.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
@@ -152,7 +161,7 @@ func TestServer_RejectMalformedBody(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/mutate", bytes.NewReader([]byte(`{not json`)))
 	rec := httptest.NewRecorder()
 
-	srv := &Server{}
+	srv := newTestServer(t)
 	srv.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusBadRequest {
@@ -191,7 +200,7 @@ func TestServer_Mutate_DeniesInvalidSecretRef(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/mutate", bytes.NewReader(body))
 	rec := httptest.NewRecorder()
 
-	srv := &Server{}
+	srv := newTestServer(t)
 	srv.ServeHTTP(rec, req)
 
 	var resp admissionv1.AdmissionReview
@@ -207,7 +216,7 @@ func TestServer_RejectMethod(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/mutate", nil)
 	rec := httptest.NewRecorder()
 
-	srv := &Server{}
+	srv := newTestServer(t)
 	srv.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusMethodNotAllowed {
@@ -247,7 +256,7 @@ func TestServer_Mutate_DryRun_NoPatch(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/mutate", bytes.NewReader(body))
 	rec := httptest.NewRecorder()
 
-	srv := &Server{}
+	srv := newTestServer(t)
 	srv.ServeHTTP(rec, req)
 
 	var resp admissionv1.AdmissionReview
@@ -262,5 +271,79 @@ func TestServer_Mutate_DryRun_NoPatch(t *testing.T) {
 	}
 	if resp.Response.Patch != nil {
 		t.Fatal("expected no patch during dry-run")
+	}
+}
+
+func TestHealthz(t *testing.T) {
+	h := HealthHandler()
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL + "/healthz")
+	if err != nil {
+		t.Fatalf("GET /healthz: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	var body map[string]string
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if body["status"] != "ok" {
+		t.Fatalf("expected status ok, got %q", body["status"])
+	}
+}
+
+func TestHealthz_WrongMethod(t *testing.T) {
+	h := HealthHandler()
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+
+	resp, err := http.Post(srv.URL+"/healthz", "application/json", nil)
+	if err != nil {
+		t.Fatalf("POST /healthz: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusMethodNotAllowed {
+		t.Fatalf("expected 405, got %d", resp.StatusCode)
+	}
+}
+
+func TestReadyz(t *testing.T) {
+	h := HealthHandler()
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL + "/readyz")
+	if err != nil {
+		t.Fatalf("GET /readyz: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	var body map[string]string
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if body["status"] != "ok" {
+		t.Fatalf("expected status ok, got %q", body["status"])
+	}
+}
+
+func TestHealthHandler_UnknownPath(t *testing.T) {
+	h := HealthHandler()
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL + "/foo")
+	if err != nil {
+		t.Fatalf("GET /foo: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", resp.StatusCode)
 	}
 }

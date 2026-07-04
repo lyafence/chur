@@ -72,3 +72,30 @@ func ValidateSecretKey(key string) error {
 func isAllowedSecretKeyRune(r rune) bool {
 	return unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-' || r == '_' || r == '.'
 }
+
+// ValidateMountPath ensures path is a safe absolute path with no traversal
+// sequences or special characters. Empty is allowed (caller defaults to /secrets).
+func ValidateMountPath(path string) error {
+	if path == "" {
+		return nil
+	}
+	if len(path) > 4096 {
+		return fmt.Errorf("mount-path exceeds 4096 characters")
+	}
+	if !strings.HasPrefix(path, "/") {
+		return fmt.Errorf("mount-path must be absolute")
+	}
+	if strings.Contains(path, "..") {
+		return fmt.Errorf("mount-path must not contain '..'")
+	}
+	for i, r := range path {
+		if !isAllowedMountRune(r) {
+			return fmt.Errorf("mount-path contains invalid character %q at position %d", r, i)
+		}
+	}
+	return nil
+}
+
+func isAllowedMountRune(r rune) bool {
+	return unicode.IsLetter(r) || unicode.IsDigit(r) || r == '/' || r == '-' || r == '_' || r == '.'
+}

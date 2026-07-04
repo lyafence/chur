@@ -35,39 +35,37 @@ builds:
       - -s -w -X main.version={{ .Version }}
 
 archives:
-  - format: tar.gz
+  - formats: [tar.gz]
     files:
       - LICENSE
       - README.md
 
-dockers:
+dockers_v2:
   - id: webhook
-    use: buildx
-    goos: linux
-    goarch: amd64
-    image_templates:
-      - "ghcr.io/lyafence/chur-webhook:{{ .Version }}"
-      - "ghcr.io/lyafence/chur-webhook:latest"
     dockerfile: Dockerfile.webhook
-    build_flag_templates:
-      - "--platform=linux/amd64"
+    images:
+      - ghcr.io/lyafence/chur-webhook
+    tags:
+      - "v{{ .Version }}"
+      - latest
+    platforms:
+      - linux/amd64
 
   - id: init
-    use: buildx
-    goos: linux
-    goarch: amd64
-    image_templates:
-      - "ghcr.io/lyafence/chur-init:{{ .Version }}"
-      - "ghcr.io/lyafence/chur-init:latest"
     dockerfile: Dockerfile.init
-    build_flag_templates:
-      - "--platform=linux/amd64"
+    images:
+      - ghcr.io/lyafence/chur-init
+    tags:
+      - "v{{ .Version }}"
+      - latest
+    platforms:
+      - linux/amd64
 
 checksum:
   name_template: "checksums.txt"
 
 snapshot:
-  name_template: "{{ incpatch .Version }}-next"
+  version_template: "{{ incpatch .Version }}-next"
 
 changelog:
   sort: asc
