@@ -1,0 +1,111 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "chur.fullname" . }}
+  labels:
+    {{- include "chur.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "chur.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "chur.selectorLabels" . | nindent 8 }}
+      annotations:
+        checksum/tls: {{ .Values.tls.userSecret.name | sha256sum }}-{{ .Values.tls.provider | sha256sum }}
+    spec:
+      serviceAccountName: {{ include "chur.serviceAccountName" . }}
+      {{- with .Values.webhook.priorityClassName }}
+      priorityClassName: {{ . }}
+      {{- end }}
+      containers:
+        - name: chur-webhook
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: 8443
+              name: https
+            - containerPort: 8080
+              name: health
+          env:
+            - name: CHUR_LISTEN
+              value: "{{ .Values.webhook.listen }}"
+            - name: CHUR_HEALTH_LISTEN
+              value: "{{ .Values.webhook.healthListen }}"
+            - name: CHUR_TLS_MODE
+              value: "{{ .Values.webhook.tlsMode }}"
+            - name: CHUR_VOLUME_SIZE_LIMIT
+              value: "{{ .Values.webhook.volumeSizeLimit }}"
+            - name: CHUR_INIT_IMAGE
+              value: "{{ .Values.initImage.repository }}:{{ .Values.initImage.tag | default .Chart.AppVersion }}"
+            - name: CHUR_ALLOWED_NAMESPACES
+              value: "{{ join "," .Values.webhook.allowedNamespaces }}"
+          {{- if eq .Values.webhook.tlsMode "mtls" }}
+            - name: CHUR_CLIENT_CA_PATH
+              value: "{{ .Values.webhook.clientCAPath }}"
+          {{- end }}
+          volumeMounts:
+            - name: tls
+              mountPath: /etc/chur/tls
+              readOnly: true
+          {{- if and (eq .Values.webhook.tlsMode "mtls") .Values.mtls.caBundle }}
+            - name: client-ca
+              mountPath: {{ dir .Values.webhook.clientCAPath }}
+              readOnly: true
+          {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: health
+              scheme: HTTP
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: health
+              scheme: HTTP
+            initialDelaySeconds: 1
+            periodSeconds: 3
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            {{- toYaml .Values.webhook.resources | nindent 12 }}
+      {{- with .Values.webhook.securityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      volumes:
+        - name: tls
+          secret:
+            secretName: {{ .Values.tls.userSecret.name }}
+            defaultMode: 0444
+      {{- if and (eq .Values.webhook.tlsMode "mtls") .Values.mtls.caBundle }}
+        - name: client-ca
+          configMap:
+            name: {{ include "chur.fullname" . }}-client-ca
+            defaultMode: 0444
+      {{- end }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.webhook.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.webhook.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.webhook.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

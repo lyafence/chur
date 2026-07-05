@@ -10,17 +10,12 @@ permissions:
   packages: write
 
 jobs:
-  goreleaser:
+  release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-
-      - uses: actions/setup-go@v6
-        with:
-          go-version: "1.26"
-          check-latest: true
 
       - uses: docker/login-action@v4
         with:
@@ -28,11 +23,49 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - uses: docker/setup-qemu-action@v4
       - uses: docker/setup-buildx-action@v4
 
-      - uses: goreleaser/goreleaser-action@v7
+      - name: Build and push webhook
+        uses: docker/build-push-action@v7
         with:
-          version: latest
-          args: release --clean
+          context: .
+          file: Dockerfile.webhook
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/chur-webhook:${{ github.ref_name }}
+            ghcr.io/${{ github.repository_owner }}/chur-webhook:latest
+
+      - name: Build and push init
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile.init
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/chur-init:${{ github.ref_name }}
+            ghcr.io/${{ github.repository_owner }}/chur-init:latest
+
+      - name: Update Chart.yaml version
+        run: |
+          VER="${GITHUB_REF_NAME#v}"
+          sed -i "s/^version:.*/version: ${VER}/" charts/chur/Chart.yaml
+          sed -i "s/^appVersion:.*/appVersion: \"${VER}\"/" charts/chur/Chart.yaml
+
+      - name: Configure Git
+        run: |
+          git config user.name "$GITHUB_ACTOR"
+          git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
+
+      - name: Publish Helm chart
+        uses: helm/chart-releaser-action@v1
+        with:
+          charts_dir: charts
+          pages_branch: helm-charts
+          mark_as_latest: false
+          skip_existing: true
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CR_RELEASE_NAME_TEMPLATE: "{{ .Version }}"

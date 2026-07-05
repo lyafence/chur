@@ -24,6 +24,7 @@ func (m *mockProvider) GetSecret(_ context.Context, _ string) ([]byte, error) {
 }
 
 func TestBackoffFetch_RetriesExhausted(t *testing.T) {
+	t.Parallel()
 	_, err := backoffFetch(context.Background(), failingFactory, "test")
 	if err == nil {
 		t.Fatal("expected error after exhausting retries")
@@ -31,6 +32,7 @@ func TestBackoffFetch_RetriesExhausted(t *testing.T) {
 }
 
 func TestBackoffFetch_SuccessOnFirstAttempt(t *testing.T) {
+	t.Parallel()
 	factory := func(ctx context.Context) (provider.SecretProvider, error) {
 		return &mockProvider{value: []byte("ok")}, nil
 	}
@@ -44,6 +46,7 @@ func TestBackoffFetch_SuccessOnFirstAttempt(t *testing.T) {
 }
 
 func TestBackoffFetch_SuccessAfterRetries(t *testing.T) {
+	t.Parallel()
 	attempts := 0
 	factory := func(ctx context.Context) (provider.SecretProvider, error) {
 		attempts++
@@ -62,6 +65,7 @@ func TestBackoffFetch_SuccessAfterRetries(t *testing.T) {
 }
 
 func TestBackoffFetch_ContextCancelled(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	_, err := backoffFetch(ctx, failingFactory, "test")
@@ -71,6 +75,7 @@ func TestBackoffFetch_ContextCancelled(t *testing.T) {
 }
 
 func TestBackoffFetch_ContextTimeout(t *testing.T) {
+	t.Parallel()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
 	defer cancel()
 	slowFactory := func(ctx context.Context) (provider.SecretProvider, error) {

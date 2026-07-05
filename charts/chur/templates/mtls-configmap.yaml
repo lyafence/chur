@@ -1,0 +1,12 @@
+{{- if eq .Values.webhook.tlsMode "mtls" }}
+{{- $caBundle := required "mtls.caBundle is required when webhook.tlsMode is mtls" .Values.mtls.caBundle }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "chur.fullname" . }}-client-ca
+  labels:
+    {{- include "chur.labels" . | nindent 4 }}
+data:
+  ca.crt: |
+    {{- $caBundle | nindent 4 }}
+{{- end }}

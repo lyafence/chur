@@ -1,0 +1,7 @@
+apiVersion: v2
+name: chur
+description: Universal Multi-Cloud & Bare-Metal Zero-Trust Secret Injector for Kubernetes
+type: application
+version: 0.2.1
+appVersion: "0.2.1"
+kubeVersion: ">=1.28.0-0"

@@ -6,9 +6,16 @@ import (
 )
 
 func TestEnvProvider_GetSecret(t *testing.T) {
-	t.Setenv("CHUR_TEST_SECRET", "hunter2")
+	t.Parallel()
 
-	p := &EnvProvider{}
+	p := &EnvProvider{
+		lookupEnv: func(ref string) (string, bool) {
+			if ref == "CHUR_TEST_SECRET" {
+				return "hunter2", true
+			}
+			return "", false
+		},
+	}
 	ctx := context.Background()
 
 	secret, err := p.GetSecret(ctx, "CHUR_TEST_SECRET")

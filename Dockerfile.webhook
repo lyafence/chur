@@ -1,5 +1,14 @@
+# syntax=docker/dockerfile:1
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS builder
+ARG TARGETOS
+ARG TARGETARCH
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -ldflags="-s -w" -o chur-webhook ./cmd/webhook
+
 FROM gcr.io/distroless/static-debian13:nonroot
-COPY linux/amd64/chur-webhook /chur-webhook
-EXPOSE 8443
-EXPOSE 8080
+COPY --from=builder /app/chur-webhook /chur-webhook
+EXPOSE 8443 8080
 ENTRYPOINT ["/chur-webhook"]

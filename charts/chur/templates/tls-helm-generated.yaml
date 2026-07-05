@@ -1,0 +1,44 @@
+{{- if eq .Values.tls.provider "helmGenerated" }}
+{{- $days := int .Values.tls.helmGenerated.validityDays -}}
+{{- $ca := genCA "chur-webhook-ca" $days -}}
+{{- $svc := include "chur.webhook.serviceName" . -}}
+{{- $cert := genSignedCert $svc nil (list $svc) $days $ca -}}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ .Values.tls.userSecret.name }}
+  labels:
+    {{- include "chur.labels" . | nindent 4 }}
+type: kubernetes.io/tls
+data:
+  tls.crt: {{ $cert.Cert | b64enc }}
+  tls.key: {{ $cert.Key | b64enc }}
+  ca.crt: {{ $ca.Cert | b64enc }}
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: {{ include "chur.fullname" . }}
+  labels:
+    {{- include "chur.labels" . | nindent 4 }}
+webhooks:
+  - name: {{ include "chur.webhook.serviceName" . }}
+    clientConfig:
+      service:
+        name: {{ include "chur.fullname" . }}
+        namespace: {{ .Release.Namespace }}
+        path: /
+        port: {{ .Values.service.port }}
+      caBundle: {{ $ca.Cert | b64enc }}
+    rules:
+      - operations: ["CREATE"]
+        apiGroups: [""]
+        apiVersions: ["v1"]
+        resources: ["pods"]
+        scope: "*"
+    failurePolicy: {{ .Values.webhook.failurePolicy }}
+    sideEffects: None
+    admissionReviewVersions: ["v1"]
+    timeoutSeconds: {{ .Values.webhook.timeoutSeconds }}
+    {{- include "chur.webhook.namespaceSelector" . | nindent 4 }}
+{{- end }}

@@ -30,7 +30,10 @@ func (p *LocalProvider) GetSecret(_ context.Context, ref string) ([]byte, error)
 
 func init() {
 	provider.Register("local", func(_ context.Context) (provider.SecretProvider, error) {
-		basePath := "/etc/chur/secrets"
+		basePath := os.Getenv("CHUR_LOCAL_BASE_PATH")
+		if basePath == "" {
+			basePath = "/etc/chur/secrets"
+		}
 		return &LocalProvider{basePath: basePath}, nil
 	})
 }

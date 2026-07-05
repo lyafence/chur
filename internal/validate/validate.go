@@ -27,7 +27,7 @@ func ValidateSecretRef(ref string) error {
 		return fmt.Errorf("secret-ref must not contain path separators")
 	}
 	for i, r := range ref {
-		if !isAllowedFilenameRune(r) {
+		if !isAllowedRune(r) {
 			return fmt.Errorf("secret-ref contains invalid character %q at position %d", r, i)
 		}
 	}
@@ -42,7 +42,7 @@ func ValidateSecretRef(ref string) error {
 	return nil
 }
 
-func isAllowedFilenameRune(r rune) bool {
+func isAllowedRune(r rune) bool {
 	return unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-' || r == '_' || r == '.'
 }
 
@@ -62,15 +62,11 @@ func ValidateSecretKey(key string) error {
 		return fmt.Errorf("secret-key must not contain path separators")
 	}
 	for i, r := range key {
-		if !isAllowedSecretKeyRune(r) {
+		if !isAllowedRune(r) {
 			return fmt.Errorf("secret-key contains invalid character %q at position %d", r, i)
 		}
 	}
 	return nil
-}
-
-func isAllowedSecretKeyRune(r rune) bool {
-	return unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-' || r == '_' || r == '.'
 }
 
 // ValidateMountPath ensures path is a safe absolute path with no traversal

@@ -1,0 +1,309 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "chur Helm values",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "replicaCount": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Number of webhook pod replicas"
+    },
+    "image": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "repository": {
+          "type": "string",
+          "description": "Container image repository for chur-webhook"
+        },
+        "tag": {
+          "type": "string",
+          "description": "Image tag. Defaults to Chart appVersion if empty"
+        },
+        "pullPolicy": {
+          "type": "string",
+          "enum": ["IfNotPresent", "Always", "Never"],
+          "description": "Image pull policy"
+        }
+      }
+    },
+    "initImage": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "repository": {
+          "type": "string",
+          "description": "Container image repository for chur-init"
+        },
+        "tag": {
+          "type": "string",
+          "description": "Init image tag. Defaults to Chart appVersion if empty"
+        },
+        "pullPolicy": {
+          "type": "string",
+          "enum": ["IfNotPresent", "Always", "Never"],
+          "description": "Init image pull policy"
+        }
+      }
+    },
+    "imagePullSecrets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" }
+        },
+        "required": ["name"]
+      },
+      "description": "List of image pull secret names for the webhook pod"
+    },
+    "nameOverride": {
+      "type": "string",
+      "description": "Replaces the chart name in resource names"
+    },
+    "fullnameOverride": {
+      "type": "string",
+      "description": "Completely replaces the generated resource names"
+    },
+    "serviceAccount": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "create": {
+          "type": "boolean",
+          "description": "Whether a service account should be created for the webhook"
+        },
+        "annotations": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "Annotations to add to the webhook service account"
+        },
+        "name": {
+          "type": "string",
+          "description": "Name of the service account to use. Generated if empty"
+        }
+      }
+    },
+    "service": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["ClusterIP", "NodePort", "LoadBalancer", "ExternalName"],
+          "description": "Kubernetes Service type"
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535,
+          "description": "Port that the Kubernetes API server connects to"
+        },
+        "targetPort": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535,
+          "description": "Container port the service forwards to"
+        }
+      }
+    },
+    "webhook": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "tlsMode": {
+          "type": "string",
+          "enum": ["server", "mtls"],
+          "description": "TLS client authentication mode"
+        },
+        "clientCAPath": {
+          "type": "string",
+          "description": "Path to the CA bundle for verifying the API server client certificate (mtls only)"
+        },
+        "listen": {
+          "type": "string",
+          "description": "Listen address for the admission endpoint"
+        },
+        "healthListen": {
+          "type": "string",
+          "description": "Listen address for health and readiness probes"
+        },
+        "volumeSizeLimit": {
+          "type": "string",
+          "description": "Max size of the tmpfs volume per pod (e.g. 10Mi)"
+        },
+        "allowedNamespaces": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Namespaces where webhook mutates pods. Empty means all namespaces"
+        },
+        "failurePolicy": {
+          "type": "string",
+          "enum": ["Fail", "Ignore"],
+          "description": "Failure policy for the mutating webhook"
+        },
+        "timeoutSeconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 30,
+          "description": "Timeout for admission review requests"
+        },
+        "skipNamespaces": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Namespaces that the webhook should NOT intercept"
+        },
+        "resources": {
+          "type": "object",
+          "description": "Resource requests and limits for the webhook container",
+          "properties": {
+            "requests": {
+              "type": "object",
+              "description": "Resource requests (cpu, memory, etc.)",
+              "additionalProperties": { "type": "string" }
+            },
+            "limits": {
+              "type": "object",
+              "description": "Resource limits (cpu, memory, etc.)",
+              "additionalProperties": { "type": "string" }
+            }
+          }
+        },
+        "nodeSelector": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "Node selector for the webhook pod"
+        },
+        "tolerations": {
+          "type": "array",
+          "description": "Tolerations for the webhook pod",
+          "items": {
+            "type": "object",
+            "properties": {
+              "key": { "type": "string" },
+              "operator": { "type": "string", "enum": ["Exists", "Equal"] },
+              "value": { "type": "string" },
+              "effect": { "type": "string", "enum": ["NoSchedule", "PreferNoSchedule", "NoExecute"] },
+              "tolerationSeconds": { "type": "integer" }
+            }
+          }
+        },
+        "affinity": {
+          "type": "object",
+          "description": "Affinity configuration for the webhook pod",
+          "properties": {
+            "nodeAffinity": { "type": "object" },
+            "podAffinity": { "type": "object" },
+            "podAntiAffinity": { "type": "object" }
+          }
+        },
+        "securityContext": {
+          "type": "object",
+          "description": "Pod-level security context for the webhook pod"
+        },
+        "priorityClassName": {
+          "type": "string",
+          "description": "Priority class name for the webhook pod"
+        }
+      }
+    },
+    "tls": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "provider": {
+          "type": "string",
+          "enum": ["certManager", "helmGenerated", "userSecret"],
+          "description": "TLS certificate provisioning strategy"
+        },
+        "certManager": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "issuerKind": {
+              "type": "string",
+              "enum": ["Issuer", "ClusterIssuer"],
+              "description": "Kind of cert-manager issuer"
+            },
+            "issuerName": {
+              "type": "string",
+              "description": "Name of cert-manager Issuer or ClusterIssuer"
+            }
+          }
+        },
+        "helmGenerated": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "validityDays": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Certificate validity in days"
+            }
+          }
+        },
+        "userSecret": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "Name of an existing TLS Secret"
+            },
+            "caBundle": {
+              "type": "string",
+              "description": "Base64-encoded CA certificate for the MWC caBundle"
+            }
+          }
+        }
+      }
+    },
+    "mtls": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "caBundle": {
+          "type": "string",
+          "description": "PEM-encoded CA certificate for verifying API server client cert (mtls only)"
+        }
+      }
+    },
+    "pdb": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Whether to create a PodDisruptionBudget"
+        },
+        "minAvailable": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10,
+          "description": "Minimum number of webhook pods that must be available"
+        }
+      }
+    },
+    "rbac": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "create": {
+          "type": "boolean",
+          "description": "Whether to create RBAC resources for chur-init"
+        },
+        "namespaces": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Namespaces where RBAC is created (empty = release namespace)"
+        },
+        "serviceAccountName": {
+          "type": "string",
+          "description": "ServiceAccount name for init containers"
+        }
+      }
+    }
+  }
+}

@@ -1,6 +1,7 @@
 package webhook
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/lyafence/chur/internal/validate"
@@ -8,6 +9,10 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/utils/ptr"
 )
+
+// ErrValidation indicates that the pod annotations failed validation.
+// The webhook should respond with HTTP 400 BadRequest for these errors.
+var ErrValidation = errors.New("validation error")
 
 const (
 	annotationProvider  = "chur.io/provider"
@@ -67,17 +72,17 @@ func MutatePod(pod *corev1.Pod, cfg *Config) ([]PatchOperation, error) {
 		return nil, nil
 	}
 	if provider == "" {
-		return nil, fmt.Errorf("%s annotation must not be empty", annotationProvider)
+		return nil, fmt.Errorf("%w: %s annotation must not be empty", ErrValidation, annotationProvider)
 	}
 
 	secretRef := pod.Annotations[annotationSecret]
 	if err := validate.ValidateSecretRef(secretRef); err != nil {
-		return nil, fmt.Errorf("invalid %s: %w", annotationSecret, err)
+		return nil, fmt.Errorf("%w: invalid %s: %w", ErrValidation, annotationSecret, err)
 	}
 
 	secretKey := pod.Annotations[annotationSecretKey]
 	if err := validate.ValidateSecretKey(secretKey); err != nil {
-		return nil, fmt.Errorf("invalid %s: %w", annotationSecretKey, err)
+		return nil, fmt.Errorf("%w: invalid %s: %w", ErrValidation, annotationSecretKey, err)
 	}
 
 	mountPath := pod.Annotations[annotationMount]
@@ -85,7 +90,7 @@ func MutatePod(pod *corev1.Pod, cfg *Config) ([]PatchOperation, error) {
 		mountPath = "/secrets"
 	}
 	if err := validate.ValidateMountPath(mountPath); err != nil {
-		return nil, fmt.Errorf("invalid %s: %w", annotationMount, err)
+		return nil, fmt.Errorf("%w: invalid %s: %w", ErrValidation, annotationMount, err)
 	}
 
 	volName := "chur-secrets"

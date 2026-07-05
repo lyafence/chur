@@ -1,11 +1,12 @@
 .PHONY: build build-webhook build-init lint test check clean \
-        docker docker-webhook docker-init release e2e
+        docker docker-webhook docker-init release e2e helm-package
 
 APP_NAME    ?= chur
 VERSION     ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS     ?= -ldflags="-s -w -X main.version=$(VERSION)"
 GOFLAGS     ?=
-E2E_CLUSTER ?= chur-e2e
+E2E_CLUSTER      ?= chur-e2e
+E2E_SKIP_CLEANUP ?= false
 
 # Use podman if available, otherwise fall back to docker.
 DOCKER := $(shell command -v podman 2>/dev/null || echo docker)
@@ -18,10 +19,10 @@ endif
 build: build-webhook build-init
 
 build-webhook:
-	go build $(GOFLAGS) $(LDFLAGS) -o bin/chur-webhook ./cmd/webhook
+	CGO_ENABLED=0 go build $(GOFLAGS) $(LDFLAGS) -o bin/chur-webhook ./cmd/webhook
 
 build-init:
-	go build $(GOFLAGS) $(LDFLAGS) -o bin/chur-init ./cmd/init
+	CGO_ENABLED=0 go build $(GOFLAGS) $(LDFLAGS) -o bin/chur-init ./cmd/init
 
 lint:
 	golangci-lint run ./...
@@ -55,5 +56,8 @@ release: build
 	tar -czf release/$(APP_NAME)-init-$(VERSION).tar.gz bin/chur-init LICENSE README.md
 	@echo "Release: release/"
 
+helm-package:
+	helm package charts/chur/ --destination dist/ --version "$(VERSION:v%=%)" --app-version "$(VERSION:v%=%)"
+
 e2e: docker
-	./hack/e2e.sh "$(VERSION)" "$(E2E_CLUSTER)"
+	./hack/e2e.sh "$(VERSION)" "$(E2E_CLUSTER)" "$(E2E_SKIP_CLEANUP)"

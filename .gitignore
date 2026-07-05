@@ -3,6 +3,7 @@
 
 # Except example configs
 !*example.json
+!charts/chur/values.schema.json
 
 # Secrets and credentials
 *.token

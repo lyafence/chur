@@ -50,6 +50,19 @@ HashiCorp Vault, local files, Kubernetes Secrets, or environment variables.
 
 _Phase 1 providers are implemented and tested. Phase 2 providers are planned._
 
+### Local provider in Kubernetes
+
+The `local` provider reads secret files from `CHUR_LOCAL_BASE_PATH`
+(default `/etc/chur/secrets`). In Kubernetes you must either:
+
+- mount a hostPath volume to `/etc/chur/secrets` in the Pod, or
+- set the annotation `chur.io/mount-path: /etc/chur/secrets` **and** mount a
+  hostPath volume to that path.
+
+By default the webhook mounts an in-memory `emptyDir` volume at `/secrets`,
+so `local` will not find files there unless you reconfigure both the mount
+path and the base path.
+
 ## Quick Start
 
 ```bash
@@ -99,12 +112,63 @@ Main environment variables (see [`.env.example`](./.env.example) for the full li
 |----------|---------|-------------|
 | `CHUR_LISTEN` | `:8443` | Webhook listen address (admission) |
 | `CHUR_HEALTH_LISTEN` | `:8080` | Webhook listen address (health probes) |
-| `CHUR_TLS_MODE` | `dev` | TLS mode: `dev` or `prod` |
+| `CHUR_TLS_MODE` | `server` | TLS mode: `server` or `mtls` |
+| `CHUR_TLS_AUTO_GENERATE` | — | Set to `1` to auto-generate self-signed TLS cert when not mounted (dev only) |
+| `CHUR_TLS_CERT_DNS_NAME` | `localhost` | DNS name for auto-generated cert (only when `CHUR_TLS_AUTO_GENERATE=1`) |
+| `CHUR_CLIENT_CA_PATH` | `/etc/chur/ca.crt` | Path to CA certificate for verifying API server client cert (mtls only) |
 | `CHUR_VOLUME_SIZE_LIMIT` | `10Mi` | Max size of tmpfs volume per pod |
 | `CHUR_ALLOWED_NAMESPACES` | (all) | Comma-separated allowlist of namespaces |
 | `CHUR_INIT_IMAGE` | `ghcr.io/lyafence/chur-init:latest` | Init container image |
 | `CHUR_PROVIDER` | `env` | Secret provider: `env`, `local`, `k8s` |
 | `CHUR_MAX_SECRET_SIZE` | `1Mi` | Max secret size in init container |
+
+## Helm Installation
+
+A Helm chart is provided under `charts/chur/`.
+
+### Production (with cert-manager)
+
+```bash
+helm install chur ./charts/chur --wait
+```
+
+Requirements:
+- Kubernetes >= 1.28
+- [cert-manager](https://cert-manager.io) installed in the cluster
+
+The chart creates a self-signed `Issuer` and a `Certificate` for the webhook's
+TLS cert. The `caBundle` in the `MutatingWebhookConfiguration` is injected
+automatically by cert-manager's `cainjector`.
+
+### Development / CI (without cert-manager)
+
+```bash
+helm install chur ./charts/chur -f ./charts/chur/values-dev.yaml --wait
+```
+
+### User-provided certificate
+
+```bash
+helm install chur ./charts/chur \
+  --set tls.provider=userSecret \
+  --set tls.userSecret.name=my-tls-secret \
+  --set tls.userSecret.caBundle="$(base64 -w0 < ca.crt)"
+```
+
+### mTLS
+
+By default, the webhook only presents a TLS server certificate. To require the
+API server to present a client certificate, set `webhook.tlsMode=mtls` and
+provide the CA bundle that signed the API server's client certificate:
+
+```bash
+helm install chur ./charts/chur \
+  --set webhook.tlsMode=mtls \
+  --set-file mtls.caBundle=api-server-client-ca.crt
+```
+
+> ⚠️ mTLS mode is not available in most managed Kubernetes clusters (EKS, GKE,
+> AKS) unless you have access to the API server's command-line flags.
 
 ## RBAC Requirements
 

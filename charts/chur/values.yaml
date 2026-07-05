@@ -1,0 +1,123 @@
+# replicaCount is the number of webhook pod replicas.
+replicaCount: 1
+
+image:
+  # image.repository is the container image repository for chur-webhook.
+  repository: ghcr.io/lyafence/chur-webhook
+  # image.tag is the image tag. Defaults to Chart appVersion if empty.
+  tag: ""
+  # image.pullPolicy is the image pull policy.
+  pullPolicy: IfNotPresent
+
+initImage:
+  # initImage.repository is the container image repository for chur-init.
+  repository: ghcr.io/lyafence/chur-init
+  # initImage.tag is the image tag. Defaults to Chart appVersion if empty.
+  tag: ""
+  # initImage.pullPolicy is the image pull policy.
+  pullPolicy: IfNotPresent
+
+# imagePullSecrets is a list of image pull secret names for the webhook pod.
+imagePullSecrets: []
+# nameOverride replaces the chart name in resource names.
+nameOverride: ""
+# fullnameOverride completely replaces the generated resource names.
+fullnameOverride: ""
+
+serviceAccount:
+  # serviceAccount.create specifies whether a service account should be created for the webhook.
+  create: true
+  # serviceAccount.annotations is a map of annotations to add to the webhook service account.
+  annotations: {}
+  # serviceAccount.name is the name of the service account to use. Generated if empty.
+  name: ""
+
+service:
+  # service.type is the Kubernetes Service type.
+  type: ClusterIP
+  # service.port is the port that the Kubernetes API server connects to.
+  port: 443
+  # service.targetPort is the container port the service forwards to.
+  targetPort: 8443
+
+webhook:
+  # webhook.tlsMode controls client authentication: "server" (default, no client cert)
+  # or "mtls" (require API server client certificate).
+  tlsMode: server
+  # webhook.clientCAPath is the path to the CA bundle for verifying the API server
+  # client certificate. Only used when tlsMode=mtls.
+  clientCAPath: /etc/chur/ca.crt
+  # webhook.listen is the listen address for the admission endpoint.
+  listen: ":8443"
+  # webhook.healthListen is the listen address for health and readiness probes.
+  healthListen: ":8080"
+  # webhook.volumeSizeLimit is the maximum size of the tmpfs volume per pod (e.g. "10Mi").
+  volumeSizeLimit: "10Mi"
+  # webhook.allowedNamespaces is a list of namespaces where webhook mutates pods.
+  # Empty means all namespaces.
+  allowedNamespaces: []
+  # webhook.failurePolicy is the failure policy for the MutatingWebhookConfiguration.
+  failurePolicy: Fail
+  # webhook.timeoutSeconds is the timeout for admission review requests.
+  timeoutSeconds: 5
+  # webhook.resources is the resource requests and limits for the webhook container.
+  resources: {}
+  # webhook.nodeSelector is a node selector for the webhook pod.
+  nodeSelector: {}
+  # webhook.tolerations is a list of tolerations for the webhook pod.
+  tolerations: []
+  # webhook.affinity is the affinity configuration for the webhook pod.
+  affinity: {}
+  # webhook.securityContext is the pod-level security context for the webhook pod.
+  securityContext: {}
+  # webhook.priorityClassName is the priority class name for the webhook pod (opt-in).
+  priorityClassName: ""
+  # webhook.skipNamespaces is a list of namespaces that the webhook should NOT intercept.
+  # Defaults to ["kube-system"] for safety.
+  skipNamespaces:
+    - kube-system
+
+tls:
+  # tls.provider selects the TLS certificate provisioning strategy:
+  # "certManager" (default), "helmGenerated" (dev/CI), or "userSecret".
+  provider: certManager
+  certManager:
+    # tls.certManager.issuerName is the name of the cert-manager Issuer or ClusterIssuer.
+    issuerName: chur-selfsigned-issuer
+    # tls.certManager.issuerKind is the kind of the issuer: "Issuer" (namespaced) or "ClusterIssuer" (cluster-scoped).
+    issuerKind: Issuer
+  helmGenerated:
+    # tls.helmGenerated.validityDays is the certificate validity period in days.
+    validityDays: 365
+  userSecret:
+    # tls.userSecret.name is the name of an existing TLS Secret (optional).
+    # The Secret must contain tls.crt, tls.key, and optionally ca.crt.
+    name: chur-webhook-tls
+    # tls.userSecret.caBundle is the base64-encoded CA certificate for the MWC caBundle.
+    # Required when using userSecret provider.
+    caBundle: ""
+
+mtls:
+  # mtls.caBundle is the PEM-encoded CA certificate that signed the API server's
+  # client certificate. Only needed when webhook.tlsMode=mtls. This value is stored
+  # in a ConfigMap and mounted as-is (PEM format).
+  caBundle: ""
+
+pdb:
+  # pdb.enabled controls whether a PodDisruptionBudget is created for the webhook.
+  enabled: true
+  # pdb.minAvailable is the minimum number of webhook pods that must be available
+  # during voluntary disruptions.
+  minAvailable: 1
+
+rbac:
+  # rbac.create controls whether RBAC resources (SA, Role, RoleBinding) are created
+  # for the chur-init init container.
+  create: true
+  # rbac.namespaces is the list of namespaces where RBAC is created. If empty, RBAC
+  # is created only in the release namespace.
+  namespaces: []
+  # rbac.serviceAccountName is the name of the ServiceAccount used by chur-init
+  # init containers. Pods using the k8s provider must set spec.serviceAccountName
+  # to this value.
+  serviceAccountName: chur-init

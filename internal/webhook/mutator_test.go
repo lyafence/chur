@@ -26,6 +26,7 @@ func podWithAnnotations(annos map[string]string) *corev1.Pod {
 }
 
 func TestMutatePod_NoAnnotations(t *testing.T) {
+	t.Parallel()
 	pod := podWithAnnotations(nil)
 	patch, err := MutatePod(pod, DefaultConfig())
 	if err != nil {
@@ -37,6 +38,7 @@ func TestMutatePod_NoAnnotations(t *testing.T) {
 }
 
 func TestMutatePod_InvalidSecretRef(t *testing.T) {
+	t.Parallel()
 	pod := podWithAnnotations(map[string]string{
 		annotationProvider: "env",
 		annotationSecret:   "foo/bar",
@@ -48,6 +50,7 @@ func TestMutatePod_InvalidSecretRef(t *testing.T) {
 }
 
 func TestMutatePod_InvalidMountPath(t *testing.T) {
+	t.Parallel()
 	pod := podWithAnnotations(map[string]string{
 		annotationProvider: "env",
 		annotationSecret:   "my-secret",
@@ -60,6 +63,7 @@ func TestMutatePod_InvalidMountPath(t *testing.T) {
 }
 
 func TestMutatePod_CreatesArrays(t *testing.T) {
+	t.Parallel()
 	pod := podWithAnnotations(map[string]string{
 		annotationProvider: "env",
 		annotationSecret:   "my-secret",
@@ -90,6 +94,7 @@ func TestMutatePod_CreatesArrays(t *testing.T) {
 }
 
 func TestMutatePod_AppendsToExistingArrays(t *testing.T) {
+	t.Parallel()
 	pod := podWithAnnotations(map[string]string{
 		annotationProvider: "env",
 		annotationSecret:   "my-secret",
@@ -111,6 +116,7 @@ func TestMutatePod_AppendsToExistingArrays(t *testing.T) {
 }
 
 func TestMutatePod_PassesSecretKey(t *testing.T) {
+	t.Parallel()
 	pod := podWithAnnotations(map[string]string{
 		annotationProvider:  "k8s",
 		annotationSecret:    "my-secret",
@@ -151,6 +157,7 @@ func TestMutatePod_PassesSecretKey(t *testing.T) {
 }
 
 func TestMutatePod_SecurityContext(t *testing.T) {
+	t.Parallel()
 	pod := podWithAnnotations(map[string]string{
 		annotationProvider: "env",
 		annotationSecret:   "my-secret",
@@ -195,6 +202,7 @@ func TestMutatePod_SecurityContext(t *testing.T) {
 }
 
 func TestMutatePod_SizeLimitInEmptyDir(t *testing.T) {
+	t.Parallel()
 	pod := podWithAnnotations(map[string]string{
 		annotationProvider: "env",
 		annotationSecret:   "my-secret",
@@ -229,6 +237,7 @@ func TestMutatePod_SizeLimitInEmptyDir(t *testing.T) {
 }
 
 func TestMutatePod_CustomSizeLimit(t *testing.T) {
+	t.Parallel()
 	pod := podWithAnnotations(map[string]string{
 		annotationProvider: "env",
 		annotationSecret:   "my-secret",
@@ -260,6 +269,7 @@ func TestMutatePod_CustomSizeLimit(t *testing.T) {
 }
 
 func TestMutatePod_SizeLimitInAppendPath(t *testing.T) {
+	t.Parallel()
 	pod := podWithAnnotations(map[string]string{
 		annotationProvider: "env",
 		annotationSecret:   "my-secret",
@@ -298,6 +308,7 @@ func TestMutatePod_SizeLimitInAppendPath(t *testing.T) {
 }
 
 func TestMutatePod_AllowedNamespaces(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name         string
 		podNamespace string
@@ -336,6 +347,7 @@ func TestMutatePod_AllowedNamespaces(t *testing.T) {
 }
 
 func TestMutatePod_CustomInitImage(t *testing.T) {
+	t.Parallel()
 	pod := podWithAnnotations(map[string]string{
 		annotationProvider: "env",
 		annotationSecret:   "my-secret",

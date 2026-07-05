@@ -14,8 +14,9 @@
 | `make docker` | Build all Docker images |
 | `make docker-webhook` | Build webhook image |
 | `make docker-init` | Build init image |
-| `make e2e` | End-to-end tests (Kind → deploy → verify) |
+| `make e2e` | End-to-end tests (Kind → deploy → verify). Set `E2E_SKIP_CLEANUP=true` to keep the Kind cluster. |
 | `make release` | Build native binary tarball (local/CI quick release) |
+| `make helm-package` | Package the Helm chart into `dist/` |
 | `goreleaser release` | Full cross-platform release + Docker images |
 
 ## Package Map
@@ -31,6 +32,7 @@
 | `internal/providers/k8s/` | Kubernetes Secret provider |
 | `internal/validate/` | Input validation (filename-safe refs, secret keys) |
 | `test/e2e/` | End-to-end tests |
+| `charts/chur/` | Helm chart for deploying the webhook |
 
 ## Architecture
 
@@ -74,7 +76,8 @@ Read secret from /secrets/<ref> (tmpfs)
 - Errors are always checked and wrapped with context.
 - No global state (provider registry is the only exception, documented).
 - Tests: table-driven, parallel-safe.
-- `.env.example` documents all required environment variables.
+- `.env.example` documents all required environment variables and keeps default
+  values consistent with the code and README.
 - `.editorconfig` enforces consistent formatting.
 
 ## Agent Constraints
@@ -94,7 +97,8 @@ Read secret from /secrets/<ref> (tmpfs)
 
 **1a: Provider Implementations + Unit Tests**
 - `env`: GetSecret reads `os.Getenv`. Test: set env var → get value.
-- `local`: GetSecret reads a file from disk. Test: temp file → read → cleanup.
+- `local`: GetSecret reads a file from disk. `CHUR_LOCAL_BASE_PATH` configures the
+  base directory (default `/etc/chur/secrets`). Test: temp file → read → cleanup.
 - `k8s`: GetSecret via InClusterConfig + client-go. Test: fake clientset (`k8s.io/client-go/testing`).
 - Exponential backoff retry — network may not be ready immediately in init containers.
 

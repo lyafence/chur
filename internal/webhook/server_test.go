@@ -36,6 +36,7 @@ func mustEncodePod(t *testing.T, pod *corev1.Pod) []byte {
 }
 
 func TestServer_Mutate_AllowsPod(t *testing.T) {
+	t.Parallel()
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-pod",
@@ -92,6 +93,7 @@ func TestServer_Mutate_AllowsPod(t *testing.T) {
 }
 
 func TestServer_Mutate_DeniesNonPod(t *testing.T) {
+	t.Parallel()
 	review := admissionv1.AdmissionReview{
 		Request: &admissionv1.AdmissionRequest{
 			UID: "test-uid",
@@ -125,6 +127,7 @@ func TestServer_Mutate_DeniesNonPod(t *testing.T) {
 }
 
 func TestServer_Mutate_DeniesInvalidPodObject(t *testing.T) {
+	t.Parallel()
 	review := admissionv1.AdmissionReview{
 		Request: &admissionv1.AdmissionRequest{
 			UID: "test-uid",
@@ -158,6 +161,7 @@ func TestServer_Mutate_DeniesInvalidPodObject(t *testing.T) {
 }
 
 func TestServer_RejectMalformedBody(t *testing.T) {
+	t.Parallel()
 	req := httptest.NewRequest(http.MethodPost, "/mutate", bytes.NewReader([]byte(`{not json`)))
 	rec := httptest.NewRecorder()
 
@@ -170,6 +174,7 @@ func TestServer_RejectMalformedBody(t *testing.T) {
 }
 
 func TestServer_Mutate_DeniesInvalidSecretRef(t *testing.T) {
+	t.Parallel()
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-pod",
@@ -210,9 +215,13 @@ func TestServer_Mutate_DeniesInvalidSecretRef(t *testing.T) {
 	if resp.Response.Allowed {
 		t.Fatal("expected denied for invalid secret-ref")
 	}
+	if resp.Response.Result == nil || resp.Response.Result.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 BadRequest for validation error, got %v", resp.Response.Result)
+	}
 }
 
 func TestServer_RejectMethod(t *testing.T) {
+	t.Parallel()
 	req := httptest.NewRequest(http.MethodGet, "/mutate", nil)
 	rec := httptest.NewRecorder()
 
@@ -225,6 +234,7 @@ func TestServer_RejectMethod(t *testing.T) {
 }
 
 func TestServer_Mutate_DryRun_NoPatch(t *testing.T) {
+	t.Parallel()
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-pod",
@@ -275,6 +285,7 @@ func TestServer_Mutate_DryRun_NoPatch(t *testing.T) {
 }
 
 func TestHealthz(t *testing.T) {
+	t.Parallel()
 	h := HealthHandler()
 	srv := httptest.NewServer(h)
 	defer srv.Close()
@@ -297,6 +308,7 @@ func TestHealthz(t *testing.T) {
 }
 
 func TestHealthz_WrongMethod(t *testing.T) {
+	t.Parallel()
 	h := HealthHandler()
 	srv := httptest.NewServer(h)
 	defer srv.Close()
@@ -312,6 +324,7 @@ func TestHealthz_WrongMethod(t *testing.T) {
 }
 
 func TestReadyz(t *testing.T) {
+	t.Parallel()
 	h := HealthHandler()
 	srv := httptest.NewServer(h)
 	defer srv.Close()
@@ -334,6 +347,7 @@ func TestReadyz(t *testing.T) {
 }
 
 func TestHealthHandler_UnknownPath(t *testing.T) {
+	t.Parallel()
 	h := HealthHandler()
 	srv := httptest.NewServer(h)
 	defer srv.Close()

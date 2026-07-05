@@ -1,0 +1,4 @@
+.git
+.gitignore
+*.md
+values-dev.yaml

@@ -2,7 +2,6 @@ package provider
 
 import (
 	"context"
-	"fmt"
 	"sync"
 )
 
@@ -43,12 +42,3 @@ func Get(name string) (Factory, bool) {
 	return f, ok
 }
 
-// MustGet returns a factory or panics if it is not registered. Useful for
-// compile-time wiring in tests.
-func MustGet(name string) Factory {
-	f, ok := Get(name)
-	if !ok {
-		panic(fmt.Sprintf("provider %q is not registered", name))
-	}
-	return f
-}

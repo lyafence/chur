@@ -61,15 +61,75 @@ func main() {
 		healthAddr = ":8080"
 	}
 
-	tlsMode := webhook.TLSModeDev
-	if os.Getenv("CHUR_TLS_MODE") == "prod" {
-		tlsMode = webhook.TLSModeProd
+	tlsMode := webhook.TLSModeServer
+	switch v := os.Getenv("CHUR_TLS_MODE"); v {
+	case "mtls":
+		tlsMode = webhook.TLSModeMTLS
+	case "server", "":
+		tlsMode = webhook.TLSModeServer
+	default:
+		slog.Error("invalid CHUR_TLS_MODE: must be 'server' or 'mtls'", "value", v)
+		os.Exit(1)
+	}
+
+	var clientCAPEM []byte
+	if tlsMode == webhook.TLSModeMTLS {
+		caPath := os.Getenv("CHUR_CLIENT_CA_PATH")
+		if caPath == "" {
+			caPath = "/etc/chur/ca.crt"
+		}
+		var err error
+		clientCAPEM, err = os.ReadFile(caPath)
+		if err != nil {
+			slog.Error("failed to read client CA", "path", caPath, "error", err)
+			os.Exit(1)
+		}
+	}
+
+	tlsCfg, err := webhook.TLSConfig(tlsMode, clientCAPEM)
+	if err != nil {
+		slog.Error("failed to build TLS config", "error", err)
+		os.Exit(1)
+	}
+
+	certFile := "/etc/chur/tls/tls.crt"
+	keyFile := "/etc/chur/tls/tls.key"
+
+	if _, err := os.Stat(certFile); os.IsNotExist(err) {
+		if os.Getenv("CHUR_TLS_AUTO_GENERATE") == "1" {
+			dnsName := os.Getenv("CHUR_TLS_CERT_DNS_NAME")
+			if dnsName == "" {
+				dnsName = "localhost"
+			}
+			slog.Warn("TLS cert not found, generating self-signed certificate",
+				"dns_name", dnsName, "path", certFile)
+			tmpDir, err := os.MkdirTemp("", "chur-tls-*")
+			if err != nil {
+				slog.Error("failed to create temp dir for dev cert", "error", err)
+				os.Exit(1)
+			}
+			defer func() {
+				if err := os.RemoveAll(tmpDir); err != nil {
+					slog.Error("failed to cleanup temp dir", "path", tmpDir, "error", err)
+				}
+			}()
+			certFile = tmpDir + "/tls.crt"
+			keyFile = tmpDir + "/tls.key"
+			if err := webhook.GenerateTLSCert(dnsName, certFile, keyFile); err != nil {
+				slog.Error("failed to generate dev TLS cert", "error", err)
+				os.Exit(1)
+			}
+		} else {
+			slog.Error("TLS cert not found and CHUR_TLS_AUTO_GENERATE is not set",
+				"path", certFile, "hint", "mount certs to /etc/chur/tls or set CHUR_TLS_AUTO_GENERATE=1")
+			os.Exit(1)
+		}
 	}
 
 	httpSrv := &http.Server{
 		Addr:              listenAddr,
 		Handler:           srv,
-		TLSConfig:         webhook.TLSConfig(tlsMode),
+		TLSConfig:         tlsCfg,
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      30 * time.Second,
@@ -88,7 +148,7 @@ func main() {
 	go func() {
 		slog.Info("starting chur-webhook admission",
 			"version", version, "addr", httpSrv.Addr, "tls_mode", tlsMode)
-		if err := httpSrv.ListenAndServeTLS("/etc/chur/tls/tls.crt", "/etc/chur/tls/tls.key"); err != nil && err != http.ErrServerClosed {
+		if err := httpSrv.ListenAndServeTLS(certFile, keyFile); err != nil && err != http.ErrServerClosed {
 			slog.Error("admission server error", "error", err)
 			cancel()
 		}
@@ -104,10 +164,14 @@ func main() {
 
 	<-ctx.Done()
 	slog.Info("shutting down...")
-	if err := healthSrv.Shutdown(context.Background()); err != nil {
+
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer shutdownCancel()
+
+	if err := healthSrv.Shutdown(shutdownCtx); err != nil {
 		slog.Error("health server shutdown error", "error", err)
 	}
-	if err := httpSrv.Shutdown(context.Background()); err != nil {
+	if err := httpSrv.Shutdown(shutdownCtx); err != nil {
 		slog.Error("admission server shutdown error", "error", err)
 	}
 }

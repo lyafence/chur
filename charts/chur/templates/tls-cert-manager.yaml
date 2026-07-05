@@ -1,0 +1,28 @@
+{{- if eq .Values.tls.provider "certManager" }}
+{{- if eq .Values.tls.certManager.issuerKind "Issuer" }}
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ .Values.tls.certManager.issuerName }}
+  labels:
+    {{- include "chur.labels" . | nindent 4 }}
+spec:
+  selfSigned: {}
+{{- end }}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "chur.fullname" . }}-tls
+  labels:
+    {{- include "chur.labels" . | nindent 4 }}
+spec:
+  secretName: {{ .Values.tls.userSecret.name }}
+  duration: 8760h
+  renewBefore: 360h
+  issuerRef:
+    name: {{ .Values.tls.certManager.issuerName }}
+    kind: {{ .Values.tls.certManager.issuerKind }}
+  dnsNames:
+    - {{ include "chur.webhook.serviceName" . }}
+{{- end }}

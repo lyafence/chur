@@ -8,12 +8,18 @@ import (
 	"github.com/lyafence/chur/internal/provider"
 )
 
-type EnvProvider struct{}
+type EnvProvider struct {
+	lookupEnv func(string) (string, bool)
+}
 
 func (p *EnvProvider) Name() string { return "env" }
 
 func (p *EnvProvider) GetSecret(_ context.Context, ref string) ([]byte, error) {
-	value, ok := os.LookupEnv(ref)
+	lookup := p.lookupEnv
+	if lookup == nil {
+		lookup = os.LookupEnv
+	}
+	value, ok := lookup(ref)
 	if !ok {
 		return nil, fmt.Errorf("env: variable %q is not set", ref)
 	}

@@ -2,6 +2,7 @@ package webhook
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -35,6 +36,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	slog.Info("admission review received", "path", r.URL.Path)
+
+	r.Body = http.MaxBytesReader(w, r.Body, 10*1024*1024)
 
 	var review admissionv1.AdmissionReview
 	if err := json.NewDecoder(r.Body).Decode(&review); err != nil {
@@ -96,8 +99,12 @@ func (s *Server) mutate(review *admissionv1.AdmissionReview) *admissionv1.Admiss
 	if err != nil {
 		slog.Error("failed to mutate pod", "pod", pod.Name, "namespace", pod.Namespace, "error", err)
 		resp.Response.Allowed = false
+		code := http.StatusInternalServerError
+		if errors.Is(err, ErrValidation) {
+			code = http.StatusBadRequest
+		}
 		resp.Response.Result = &metav1.Status{
-			Code:    http.StatusInternalServerError,
+			Code:    int32(code),
 			Message: fmt.Sprintf("failed to mutate pod: %v", err),
 		}
 		return resp

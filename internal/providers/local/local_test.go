@@ -8,6 +8,7 @@ import (
 )
 
 func TestLocalProvider_GetSecret(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "secret.txt"), []byte("hello"), 0600); err != nil {
 		t.Fatalf("setup: %v", err)
@@ -31,6 +32,7 @@ func TestLocalProvider_GetSecret(t *testing.T) {
 }
 
 func TestLocalProvider_GetSecret_PathTraversal(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "secret.txt"), []byte("hello"), 0600); err != nil {
 		t.Fatalf("setup: %v", err)

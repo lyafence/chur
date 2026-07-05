@@ -1,0 +1,34 @@
+{{- if ne .Values.tls.provider "helmGenerated" }}
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: {{ include "chur.fullname" . }}
+  labels:
+    {{- include "chur.labels" . | nindent 4 }}
+  {{- if eq .Values.tls.provider "certManager" }}
+  annotations:
+    cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/{{ include "chur.fullname" . }}-tls
+  {{- end }}
+webhooks:
+  - name: {{ include "chur.webhook.serviceName" . }}
+    clientConfig:
+      service:
+        name: {{ include "chur.fullname" . }}
+        namespace: {{ .Release.Namespace }}
+        path: /
+        port: {{ .Values.service.port }}
+      {{- if ne .Values.tls.provider "certManager" }}
+      caBundle: {{ .Values.tls.userSecret.caBundle | default "" }}
+      {{- end }}
+    rules:
+      - operations: ["CREATE"]
+        apiGroups: [""]
+        apiVersions: ["v1"]
+        resources: ["pods"]
+        scope: "*"
+    failurePolicy: {{ .Values.webhook.failurePolicy }}
+    sideEffects: None
+    admissionReviewVersions: ["v1"]
+    timeoutSeconds: {{ .Values.webhook.timeoutSeconds }}
+    {{- include "chur.webhook.namespaceSelector" . | nindent 4 }}
+{{- end }}

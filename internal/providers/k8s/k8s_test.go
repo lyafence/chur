@@ -10,6 +10,7 @@ import (
 )
 
 func TestK8sProvider_GetSecret_SingleKey(t *testing.T) {
+	t.Parallel()
 	client := fake.NewSimpleClientset(&corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{Name: "my-secret", Namespace: "default"},
 		Data:       map[string][]byte{"token": []byte("abc123")},
@@ -26,6 +27,7 @@ func TestK8sProvider_GetSecret_SingleKey(t *testing.T) {
 }
 
 func TestK8sProvider_GetSecret_ExplicitKey(t *testing.T) {
+	t.Parallel()
 	client := fake.NewSimpleClientset(&corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{Name: "my-secret", Namespace: "default"},
 		Data: map[string][]byte{
@@ -45,6 +47,7 @@ func TestK8sProvider_GetSecret_ExplicitKey(t *testing.T) {
 }
 
 func TestK8sProvider_GetSecret_MultipleKeysNoSelection(t *testing.T) {
+	t.Parallel()
 	client := fake.NewSimpleClientset(&corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{Name: "my-secret", Namespace: "default"},
 		Data: map[string][]byte{
@@ -61,6 +64,7 @@ func TestK8sProvider_GetSecret_MultipleKeysNoSelection(t *testing.T) {
 }
 
 func TestK8sProvider_GetSecret_MissingKey(t *testing.T) {
+	t.Parallel()
 	client := fake.NewSimpleClientset(&corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{Name: "my-secret", Namespace: "default"},
 		Data:       map[string][]byte{"token": []byte("abc123")},
@@ -74,6 +78,7 @@ func TestK8sProvider_GetSecret_MissingKey(t *testing.T) {
 }
 
 func TestK8sProvider_GetSecret_EmptySecret(t *testing.T) {
+	t.Parallel()
 	client := fake.NewSimpleClientset(&corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{Name: "my-secret", Namespace: "default"},
 		Data:       map[string][]byte{},

@@ -1,4 +1,13 @@
+# syntax=docker/dockerfile:1
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS builder
+ARG TARGETOS
+ARG TARGETARCH
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -ldflags="-s -w" -o chur-init ./cmd/init
+
 FROM gcr.io/distroless/static-debian13:nonroot
-COPY linux/amd64/chur-init /chur-init
-EXPOSE 8443
+COPY --from=builder /app/chur-init /chur-init
 ENTRYPOINT ["/chur-init"]

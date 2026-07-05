@@ -6,6 +6,7 @@ import (
 )
 
 func TestValidateSecretRef(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		ref     string
@@ -44,6 +45,7 @@ func TestValidateSecretRef(t *testing.T) {
 }
 
 func TestValidateMountPath(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		path    string
@@ -79,6 +81,7 @@ func TestValidateMountPath(t *testing.T) {
 }
 
 func TestValidateSecretKey(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		key     string
