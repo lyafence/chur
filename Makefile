@@ -5,6 +5,8 @@ APP_NAME    ?= chur
 VERSION     ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS     ?= -ldflags="-s -w -X main.version=$(VERSION)"
 GOFLAGS     ?=
+TARGETOS    ?= linux
+TARGETARCH  ?= $(shell go env GOARCH)
 E2E_CLUSTER      ?= chur-e2e
 E2E_SKIP_CLEANUP ?= false
 
@@ -36,17 +38,17 @@ clean:
 	rm -rf bin/ dist/ release/
 	rm -f coverage.out *.log
 
-docker-webhook: build-webhook
-	mkdir -p linux/amd64
-	cp bin/$(APP_NAME)-webhook linux/amd64/$(APP_NAME)-webhook
-	$(DOCKER) build -t $(APP_NAME)-webhook:$(VERSION) -f Dockerfile.webhook .
-	rm -rf linux
+docker-webhook:
+	$(DOCKER) build --platform $(TARGETOS)/$(TARGETARCH) \
+		--build-arg TARGETOS=$(TARGETOS) \
+		--build-arg TARGETARCH=$(TARGETARCH) \
+		-t $(APP_NAME)-webhook:$(VERSION) -f Dockerfile.webhook .
 
-docker-init: build-init
-	mkdir -p linux/amd64
-	cp bin/$(APP_NAME)-init linux/amd64/$(APP_NAME)-init
-	$(DOCKER) build -t $(APP_NAME)-init:$(VERSION) -f Dockerfile.init .
-	rm -rf linux
+docker-init:
+	$(DOCKER) build --platform $(TARGETOS)/$(TARGETARCH) \
+		--build-arg TARGETOS=$(TARGETOS) \
+		--build-arg TARGETARCH=$(TARGETARCH) \
+		-t $(APP_NAME)-init:$(VERSION) -f Dockerfile.init .
 
 docker: docker-webhook docker-init
 

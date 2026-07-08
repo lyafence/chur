@@ -53,9 +53,15 @@ webhook:
   healthListen: ":8080"
   # webhook.volumeSizeLimit is the maximum size of the tmpfs volume per pod (e.g. "10Mi").
   volumeSizeLimit: "10Mi"
+  # webhook.initMaxSecretSize is the default maximum secret size passed to chur-init.
+  initMaxSecretSize: "1Mi"
+  # webhook.initLocalBasePath is the default base path for the local provider passed to chur-init.
+  initLocalBasePath: "/etc/chur/secrets"
   # webhook.allowedNamespaces is a list of namespaces where webhook mutates pods.
   # Empty means all namespaces.
   allowedNamespaces: []
+  # webhook.maxConcurrent is the maximum number of concurrent admission reviews.
+  maxConcurrent: 100
   # webhook.failurePolicy is the failure policy for the MutatingWebhookConfiguration.
   failurePolicy: Fail
   # webhook.timeoutSeconds is the timeout for admission review requests.

@@ -134,10 +134,23 @@
           "type": "string",
           "description": "Max size of the tmpfs volume per pod (e.g. 10Mi)"
         },
+        "initMaxSecretSize": {
+          "type": "string",
+          "description": "Default maximum secret size passed to chur-init"
+        },
+        "initLocalBasePath": {
+          "type": "string",
+          "description": "Default base path for the local provider passed to chur-init"
+        },
         "allowedNamespaces": {
           "type": "array",
           "items": { "type": "string" },
           "description": "Namespaces where webhook mutates pods. Empty means all namespaces"
+        },
+        "maxConcurrent": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum number of concurrent admission reviews"
         },
         "failurePolicy": {
           "type": "string",

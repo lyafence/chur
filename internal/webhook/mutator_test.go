@@ -2,11 +2,13 @@ package webhook
 
 import (
 	"encoding/json"
+	"errors"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 )
 
 func podWithAnnotations(annos map[string]string) *corev1.Pod {
@@ -49,6 +51,21 @@ func TestMutatePod_InvalidSecretRef(t *testing.T) {
 	}
 }
 
+func TestMutatePod_UnknownProvider(t *testing.T) {
+	t.Parallel()
+	pod := podWithAnnotations(map[string]string{
+		annotationProvider: "vault",
+		annotationSecret:   "my-secret",
+	})
+	_, err := MutatePod(pod, DefaultConfig())
+	if err == nil {
+		t.Fatal("expected error for unknown provider")
+	}
+	if !errors.Is(err, ErrValidation) {
+		t.Fatalf("expected ErrValidation, got %v", err)
+	}
+}
+
 func TestMutatePod_InvalidMountPath(t *testing.T) {
 	t.Parallel()
 	pod := podWithAnnotations(map[string]string{
@@ -87,9 +104,9 @@ func TestMutatePod_CreatesArrays(t *testing.T) {
 		t.Fatalf("patch is not valid JSON: %v", err)
 	}
 
-	// We expect replace/add for volumes, initContainers, and one container volumeMounts.
-	if len(ops) != 3 {
-		t.Fatalf("expected 3 patch operations, got %d", len(ops))
+	// We expect securityContext fsGroup, volumes, initContainers, and one container volumeMounts.
+	if len(ops) != 4 {
+		t.Fatalf("expected 4 patch operations, got %d", len(ops))
 	}
 }
 
@@ -109,8 +126,54 @@ func TestMutatePod_AppendsToExistingArrays(t *testing.T) {
 	}
 
 	for _, op := range patch {
-		if op.Path != "/spec/containers/0/volumeMounts/-" && op.Path != "/spec/volumes/-" && op.Path != "/spec/initContainers/-" {
+		if op.Path != "/spec/containers/0/volumeMounts/-" &&
+			op.Path != "/spec/volumes/-" &&
+			op.Path != "/spec/initContainers/-" &&
+			op.Path != "/spec/securityContext" &&
+			op.Path != "/spec/securityContext/fsGroup" {
 			t.Fatalf("expected append path, got %q", op.Path)
+		}
+	}
+}
+
+func TestMutatePod_AddsFSGroup(t *testing.T) {
+	t.Parallel()
+	pod := podWithAnnotations(map[string]string{
+		annotationProvider: "env",
+		annotationSecret:   "my-secret",
+	})
+	patch, err := MutatePod(pod, DefaultConfig())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	hasFSGroup := false
+	for _, op := range patch {
+		if op.Path == "/spec/securityContext" || op.Path == "/spec/securityContext/fsGroup" {
+			hasFSGroup = true
+		}
+	}
+	if !hasFSGroup {
+		t.Fatal("expected fsGroup patch")
+	}
+}
+
+func TestMutatePod_RespectsExistingFSGroup(t *testing.T) {
+	t.Parallel()
+	pod := podWithAnnotations(map[string]string{
+		annotationProvider: "env",
+		annotationSecret:   "my-secret",
+	})
+	pod.Spec.SecurityContext = &corev1.PodSecurityContext{
+		FSGroup: ptr.To[int64](2000),
+	}
+	patch, err := MutatePod(pod, DefaultConfig())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, op := range patch {
+		if op.Path == "/spec/securityContext" || op.Path == "/spec/securityContext/fsGroup" {
+			t.Fatal("expected no fsGroup patch when already set")
 		}
 	}
 }
@@ -153,6 +216,52 @@ func TestMutatePod_PassesSecretKey(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("expected CHUR_SECRET_KEY env var in init container, got %+v", initContainer.Env)
+	}
+}
+
+func TestMutatePod_PassesInitConfig(t *testing.T) {
+	t.Parallel()
+	pod := podWithAnnotations(map[string]string{
+		annotationProvider: "env",
+		annotationSecret:   "my-secret",
+	})
+
+	cfg := DefaultConfig()
+	cfg.MaxSecretSize = "2Mi"
+	cfg.LocalBasePath = "/custom/secrets"
+
+	patch, err := MutatePod(pod, cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var initContainer *corev1.Container
+	for _, op := range patch {
+		if op.Path == "/spec/initContainers/-" || op.Path == "/spec/initContainers" {
+			c, ok := op.Value.(corev1.Container)
+			if ok {
+				initContainer = &c
+			} else if arr, ok := op.Value.([]corev1.Container); ok && len(arr) > 0 {
+				initContainer = &arr[0]
+			}
+		}
+	}
+	if initContainer == nil {
+		t.Fatal("init container patch not found")
+	}
+
+	want := map[string]string{
+		"CHUR_MAX_SECRET_SIZE": "2Mi",
+		"CHUR_LOCAL_BASE_PATH": "/custom/secrets",
+	}
+	got := map[string]string{}
+	for _, env := range initContainer.Env {
+		got[env.Name] = env.Value
+	}
+	for name, value := range want {
+		if got[name] != value {
+			t.Fatalf("expected env %s=%q, got %q", name, value, got[name])
+		}
 	}
 }
 

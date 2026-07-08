@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/lyafence/chur/internal/provider"
 	"github.com/lyafence/chur/internal/validate"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -19,6 +20,8 @@ const (
 	annotationSecret    = "chur.io/secret-ref"
 	annotationSecretKey = "chur.io/secret-key"
 	annotationMount     = "chur.io/mount-path"
+
+	defaultChurFSGroup int64 = 1001
 )
 
 // PatchOperation represents a single JSON Patch operation.
@@ -33,6 +36,9 @@ type Config struct {
 	VolumeSizeLimit   resource.Quantity
 	AllowedNamespaces []string
 	InitImage         string
+	MaxSecretSize     string
+	LocalBasePath     string
+	MaxConcurrent     int
 }
 
 // DefaultConfig returns a Config with safe defaults.
@@ -40,6 +46,9 @@ func DefaultConfig() *Config {
 	return &Config{
 		VolumeSizeLimit: resource.MustParse("10Mi"),
 		InitImage:       "ghcr.io/lyafence/chur-init:latest",
+		MaxSecretSize:   "1Mi",
+		LocalBasePath:   "/etc/chur/secrets",
+		MaxConcurrent:   100,
 	}
 }
 
@@ -67,12 +76,15 @@ func MutatePod(pod *corev1.Pod, cfg *Config) ([]PatchOperation, error) {
 		}
 	}
 
-	provider, ok := pod.Annotations[annotationProvider]
+	providerName, ok := pod.Annotations[annotationProvider]
 	if !ok {
 		return nil, nil
 	}
-	if provider == "" {
+	if providerName == "" {
 		return nil, fmt.Errorf("%w: %s annotation must not be empty", ErrValidation, annotationProvider)
+	}
+	if !provider.IsValidName(providerName) {
+		return nil, fmt.Errorf("%w: unknown provider %q", ErrValidation, providerName)
 	}
 
 	secretRef := pod.Annotations[annotationSecret]
@@ -93,8 +105,33 @@ func MutatePod(pod *corev1.Pod, cfg *Config) ([]PatchOperation, error) {
 		return nil, fmt.Errorf("%w: invalid %s: %w", ErrValidation, annotationMount, err)
 	}
 
+	// Determine the group that will own the shared tmpfs volume.
+	// If the pod already specifies fsGroup, respect it; otherwise inject one.
+	fsGroup := defaultChurFSGroup
+	if pod.Spec.SecurityContext != nil && pod.Spec.SecurityContext.FSGroup != nil {
+		fsGroup = *pod.Spec.SecurityContext.FSGroup
+	}
+
 	volName := "chur-secrets"
 	patches := []PatchOperation{}
+
+	// Ensure the pod-level securityContext has an fsGroup so that all
+	// containers share a supplementary group for the tmpfs volume.
+	if pod.Spec.SecurityContext == nil {
+		patches = append(patches, PatchOperation{
+			Op:   "add",
+			Path: "/spec/securityContext",
+			Value: &corev1.PodSecurityContext{
+				FSGroup: ptr.To(fsGroup),
+			},
+		})
+	} else if pod.Spec.SecurityContext.FSGroup == nil {
+		patches = append(patches, PatchOperation{
+			Op:    "add",
+			Path:  "/spec/securityContext/fsGroup",
+			Value: fsGroup,
+		})
+	}
 
 	// Add the tmpfs volume, creating the array if necessary.
 	if len(pod.Spec.Volumes) == 0 {
@@ -128,9 +165,11 @@ func MutatePod(pod *corev1.Pod, cfg *Config) ([]PatchOperation, error) {
 	}
 
 	initEnv := []corev1.EnvVar{
-		{Name: "CHUR_PROVIDER", Value: provider},
+		{Name: "CHUR_PROVIDER", Value: providerName},
 		{Name: "CHUR_SECRET_REF", Value: secretRef},
 		{Name: "CHUR_MOUNT_PATH", Value: mountPath},
+		{Name: "CHUR_MAX_SECRET_SIZE", Value: cfg.MaxSecretSize},
+		{Name: "CHUR_LOCAL_BASE_PATH", Value: cfg.LocalBasePath},
 	}
 	if secretKey != "" {
 		initEnv = append(initEnv, corev1.EnvVar{Name: "CHUR_SECRET_KEY", Value: secretKey})
@@ -145,6 +184,7 @@ func MutatePod(pod *corev1.Pod, cfg *Config) ([]PatchOperation, error) {
 		SecurityContext: &corev1.SecurityContext{
 			RunAsNonRoot:             ptr.To(true),
 			RunAsUser:                ptr.To[int64](1001),
+			RunAsGroup:               ptr.To(fsGroup),
 			ReadOnlyRootFilesystem:   ptr.To(true),
 			AllowPrivilegeEscalation: ptr.To(false),
 			Capabilities: &corev1.Capabilities{

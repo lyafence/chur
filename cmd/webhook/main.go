@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -44,6 +45,20 @@ func main() {
 
 	if v := os.Getenv("CHUR_INIT_IMAGE"); v != "" {
 		cfg.InitImage = v
+	}
+	if v := os.Getenv("CHUR_MAX_SECRET_SIZE"); v != "" {
+		cfg.MaxSecretSize = v
+	}
+	if v := os.Getenv("CHUR_LOCAL_BASE_PATH"); v != "" {
+		cfg.LocalBasePath = v
+	}
+	if v := os.Getenv("CHUR_MAX_CONCURRENT"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n <= 0 {
+			slog.Error("invalid CHUR_MAX_CONCURRENT", "value", v, "error", err)
+			os.Exit(1)
+		}
+		cfg.MaxConcurrent = n
 	}
 
 	srv, err := webhook.NewServer(cfg)
@@ -134,6 +149,7 @@ func main() {
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      30 * time.Second,
 		IdleTimeout:       90 * time.Second,
+		MaxHeaderBytes:    1 << 20, // 1 MiB
 	}
 
 	healthSrv := &http.Server{

@@ -2,10 +2,12 @@ package webhook
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	admissionv1 "k8s.io/api/admission/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -360,4 +362,48 @@ func TestHealthHandler_UnknownPath(t *testing.T) {
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d", resp.StatusCode)
 	}
+}
+
+func TestServer_ConcurrencyLimit(t *testing.T) {
+	t.Parallel()
+
+	cfg := DefaultConfig()
+	cfg.MaxConcurrent = 1
+	srv, err := NewServer(cfg)
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+
+	blocked := make(chan struct{})
+	release := make(chan struct{})
+
+	srv.mutateFn = func(review *admissionv1.AdmissionReview) *admissionv1.AdmissionReview {
+		close(blocked)
+		<-release
+		return &admissionv1.AdmissionReview{
+			Response: &admissionv1.AdmissionResponse{Allowed: true},
+		}
+	}
+
+	// First request holds the only concurrency slot.
+	go func() {
+		req := httptest.NewRequest(http.MethodPost, "/mutate", bytes.NewReader([]byte("{}")))
+		rec := httptest.NewRecorder()
+		srv.ServeHTTP(rec, req)
+	}()
+
+	<-blocked
+
+	// Second request should be rejected because the slot is taken.
+	req := httptest.NewRequest(http.MethodPost, "/mutate", bytes.NewReader([]byte("{}")))
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	req = req.WithContext(ctx)
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 when busy, got %d", rec.Code)
+	}
+	close(release)
 }

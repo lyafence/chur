@@ -42,6 +42,12 @@ spec:
               value: "{{ .Values.initImage.repository }}:{{ .Values.initImage.tag | default .Chart.AppVersion }}"
             - name: CHUR_ALLOWED_NAMESPACES
               value: "{{ join "," .Values.webhook.allowedNamespaces }}"
+            - name: CHUR_MAX_SECRET_SIZE
+              value: "{{ .Values.webhook.initMaxSecretSize }}"
+            - name: CHUR_LOCAL_BASE_PATH
+              value: "{{ .Values.webhook.initLocalBasePath }}"
+            - name: CHUR_MAX_CONCURRENT
+              value: "{{ .Values.webhook.maxConcurrent }}"
           {{- if eq .Values.webhook.tlsMode "mtls" }}
             - name: CHUR_CLIENT_CA_PATH
               value: "{{ .Values.webhook.clientCAPath }}"

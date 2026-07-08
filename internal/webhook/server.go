@@ -17,16 +17,30 @@ import (
 type Server struct {
 	cfg          *Config
 	deserializer runtime.Decoder
+	sem          chan struct{}
+	mutateFn     func(*admissionv1.AdmissionReview) *admissionv1.AdmissionReview
 }
 
 func NewServer(cfg *Config) (*Server, error) {
+	if cfg == nil {
+		cfg = DefaultConfig()
+	}
+	maxConcurrent := cfg.MaxConcurrent
+	if maxConcurrent <= 0 {
+		maxConcurrent = 100
+	}
+
 	scheme := runtime.NewScheme()
 	_ = corev1.AddToScheme(scheme)
 	_ = admissionv1.AddToScheme(scheme)
-	return &Server{
+
+	s := &Server{
 		cfg:          cfg,
 		deserializer: serializer.NewCodecFactory(scheme).UniversalDeserializer(),
-	}, nil
+		sem:          make(chan struct{}, maxConcurrent),
+	}
+	s.mutateFn = s.mutate
+	return s, nil
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -34,6 +48,16 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+
+	// Limit concurrent admission reviews to protect the webhook from
+	// unbounded goroutine growth under load.
+	select {
+	case s.sem <- struct{}{}:
+	case <-r.Context().Done():
+		http.Error(w, "server busy or request canceled", http.StatusServiceUnavailable)
+		return
+	}
+	defer func() { <-s.sem }()
 
 	slog.Info("admission review received", "path", r.URL.Path)
 
@@ -45,7 +69,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp := s.mutate(&review)
+	resp := s.mutateFn(&review)
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(resp); err != nil {

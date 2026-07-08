@@ -77,7 +77,7 @@ func main() {
 		slog.Error("failed to create mount dir", "path", mountPath, "error", err)
 		os.Exit(1)
 	}
-	if err := os.WriteFile(path, secret, 0600); err != nil {
+	if err := os.WriteFile(path, secret, 0640); err != nil {
 		slog.Error("failed to write secret", "path", path, "error", err)
 		os.Exit(1)
 	}
