@@ -1,6 +1,6 @@
 # Chur Helm Charts
 
-_Universal Multi-Cloud & Bare-Metal Zero-Trust Secret Injector for Kubernetes_
+_Lightweight in-memory secret injection for Kubernetes_
 
 [![GitHub release](https://img.shields.io/github/v/release/lyafence/chur?style=flat-square)](https://github.com/lyafence/chur/releases)
 [![License](https://img.shields.io/github/license/lyafence/chur?style=flat-square)](https://github.com/lyafence/chur/blob/main/LICENSE)
