@@ -29,6 +29,11 @@ func main() {
 		providerName = "env"
 	}
 	secretRef := os.Getenv("CHUR_SECRET_REF")
+	mountPath := os.Getenv("CHUR_MOUNT_PATH")
+	if mountPath == "" {
+		mountPath = "/secrets"
+	}
+
 	if secretRef == "" {
 		slog.Error("CHUR_SECRET_REF is required")
 		os.Exit(1)
@@ -36,10 +41,6 @@ func main() {
 	if err := validate.ValidateSecretRef(secretRef); err != nil {
 		slog.Error("invalid CHUR_SECRET_REF", "error", err)
 		os.Exit(1)
-	}
-	mountPath := os.Getenv("CHUR_MOUNT_PATH")
-	if mountPath == "" {
-		mountPath = "/secrets"
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -92,7 +93,7 @@ func backoffFetch(ctx context.Context, factory provider.Factory, secretRef strin
 	for attempt := 0; attempt < maxRetries; attempt++ {
 		if attempt > 0 {
 			delay := time.Duration(1<<(attempt-1))*time.Second + time.Duration(rand.Intn(500))*time.Millisecond
-			slog.Info("retrying secret fetch", "attempt", attempt+1, "max", maxRetries, "delay", delay.String())
+			slog.Warn("retrying secret fetch", "attempt", attempt+1, "max", maxRetries, "delay", delay.String(), "error", lastErr)
 			select {
 			case <-ctx.Done():
 				return nil, ctx.Err()

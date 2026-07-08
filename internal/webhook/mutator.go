@@ -175,6 +175,25 @@ func MutatePod(pod *corev1.Pod, cfg *Config) ([]PatchOperation, error) {
 		initEnv = append(initEnv, corev1.EnvVar{Name: "CHUR_SECRET_KEY", Value: secretKey})
 	}
 
+	// The local provider reads files from the node filesystem. Mount the base
+	// directory as a read-only hostPath volume into the init container only.
+	localVolName := "chur-local-base"
+	if providerName == "local" {
+		patches = append(patches, PatchOperation{
+			Op:   "add",
+			Path: "/spec/volumes/-",
+			Value: corev1.Volume{
+				Name: localVolName,
+				VolumeSource: corev1.VolumeSource{
+					HostPath: &corev1.HostPathVolumeSource{
+						Path: cfg.LocalBasePath,
+						Type: ptr.To(corev1.HostPathDirectoryOrCreate),
+					},
+				},
+			},
+		})
+	}
+
 	// Add the chur-init init container, creating the array if necessary.
 	initContainer := corev1.Container{
 		Name:            "chur-init",
@@ -195,6 +214,13 @@ func MutatePod(pod *corev1.Pod, cfg *Config) ([]PatchOperation, error) {
 		VolumeMounts: []corev1.VolumeMount{
 			{Name: volName, MountPath: mountPath},
 		},
+	}
+	if providerName == "local" {
+		initContainer.VolumeMounts = append(initContainer.VolumeMounts, corev1.VolumeMount{
+			Name:      localVolName,
+			MountPath: cfg.LocalBasePath,
+			ReadOnly:  true,
+		})
 	}
 	if len(pod.Spec.InitContainers) == 0 {
 		patches = append(patches, PatchOperation{

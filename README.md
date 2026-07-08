@@ -1,18 +1,47 @@
 # chur
 
-> **Status:** Pre-release. API may change without notice. Not production-ready.
+> **Status:** Alpha (stabilization in progress). API may change without notice.
 
-![Status](https://img.shields.io/badge/status-pre--release-red)
+![Status](https://img.shields.io/badge/status-alpha-yellow)
 
-Universal Multi-Cloud & Bare-Metal Zero-Trust Secret Injector for Kubernetes.
+**Lightweight in-memory secret injection for Kubernetes.**
+
+CHUR is not another secrets manager. It is the simplest secure way to deliver a
+secret directly into the memory of a Kubernetes workload. See
+[THREAT_MODEL.md](THREAT_MODEL.md) for the security model.
 
 ## Overview
 
 chur is a Kubernetes admission webhook that intercepts Pod creation and
-injects secrets directly into container memory (tmpfs), bypassing etcd, disk,
-and environment variables. Secrets are sourced from any backend via a pluggable
-provider architecture — AWS Secrets Manager, GCP Secret Manager, Azure Key Vault,
-HashiCorp Vault, local files, Kubernetes Secrets, or environment variables.
+injects secrets directly into container memory (tmpfs), bypassing application
+environment variables and Kubernetes Secret volumes. Secrets are sourced from
+any backend via a pluggable provider architecture — AWS Secrets Manager, GCP
+Secret Manager, Azure Key Vault, HashiCorp Vault, local files, Kubernetes
+Secrets, or environment variables.
+
+## Why CHUR?
+
+| CHUR | Kubernetes Secret volume |
+|------|--------------------------|
+| In-memory delivery | Secret volume |
+| No application env vars | Env vars optional |
+| Admission-based injection | Native volume mount |
+| Lightweight | Built-in |
+
+## Security
+
+- Secrets are delivered to a tmpfs (`emptyDir` with `medium: Memory`) and never
+  written to disk.
+- The secret value is never injected into the application container environment.
+- `chur-init` runs as a non-root user with a read-only root filesystem and
+  dropped capabilities.
+- The secret file is written with group-readable permissions (`0640`) and shared
+  via `fsGroup`.
+- Unknown providers are rejected at admission time.
+- Request size, concurrency, and secret size are bounded.
+
+See [THREAT_MODEL.md](THREAT_MODEL.md) for the full threat model and
+non-goals.
 
 ## Architecture
 
@@ -53,15 +82,14 @@ _Phase 1 providers are implemented and tested. Phase 2 providers are planned._
 ### Local provider in Kubernetes
 
 The `local` provider reads secret files from `CHUR_LOCAL_BASE_PATH`
-(default `/etc/chur/secrets`). In Kubernetes you must either:
+(default `/etc/chur/secrets`). When the provider is `local`, the webhook
+automatically mounts the base directory as a read-only `hostPath` volume into
+the `chur-init` container. You only need to ensure the files exist on the node
+at the expected path.
 
-- mount a hostPath volume to `/etc/chur/secrets` in the Pod, or
-- set the annotation `chur.io/mount-path: /etc/chur/secrets` **and** mount a
-  hostPath volume to that path.
-
-By default the webhook mounts an in-memory `emptyDir` volume at `/secrets`,
-so `local` will not find files there unless you reconfigure both the mount
-path and the base path.
+The secret is still delivered to the application container through the
+in-memory `emptyDir` volume at `/secrets` (or the path specified by
+`chur.io/mount-path`).
 
 ## Quick Start
 
@@ -121,6 +149,7 @@ Main environment variables (see [`.env.example`](./.env.example) for the full li
 | `CHUR_INIT_IMAGE` | `ghcr.io/lyafence/chur-init:latest` | Init container image |
 | `CHUR_PROVIDER` | `env` | Secret provider: `env`, `local`, `k8s` |
 | `CHUR_MAX_SECRET_SIZE` | `1Mi` | Max secret size in init container |
+| `CHUR_MAX_CONCURRENT` | `100` | Maximum concurrent admission review requests |
 
 ## Helm Installation
 
@@ -169,6 +198,14 @@ helm install chur ./charts/chur \
 
 > ⚠️ mTLS mode is not available in most managed Kubernetes clusters (EKS, GKE,
 > AKS) unless you have access to the API server's command-line flags.
+
+### Using the Helm repository
+
+```bash
+helm repo add chur https://lyafence.github.io/chur
+helm repo update
+helm install chur chur/chur --wait
+```
 
 ## RBAC Requirements
 

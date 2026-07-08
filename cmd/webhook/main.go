@@ -161,6 +161,19 @@ func main() {
 		IdleTimeout:       30 * time.Second,
 	}
 
+	slog.Info("webhook configuration loaded",
+		"version", version,
+		"listen", listenAddr,
+		"health_listen", healthAddr,
+		"tls_mode", tlsMode,
+		"volume_size_limit", cfg.VolumeSizeLimit.String(),
+		"allowed_namespaces", cfg.AllowedNamespaces,
+		"init_image", cfg.InitImage,
+		"max_secret_size", cfg.MaxSecretSize,
+		"local_base_path", cfg.LocalBasePath,
+		"max_concurrent", cfg.MaxConcurrent,
+	)
+
 	go func() {
 		slog.Info("starting chur-webhook admission",
 			"version", version, "addr", httpSrv.Addr, "tls_mode", tlsMode)

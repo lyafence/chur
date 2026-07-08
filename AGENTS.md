@@ -7,9 +7,11 @@
 | `make build` | Build both binaries (webhook + init) |
 | `make build-webhook` | Build chur-webhook only |
 | `make build-init` | Build chur-init only |
+| `make fmt` | Format Go sources |
 | `make lint` | Run golangci-lint |
 | `make test` | Run tests |
 | `make check` | Full verification: lint → test → build |
+| `make vuln` | Run govulncheck |
 | `make clean` | Remove build artifacts |
 | `make docker` | Build all Docker images |
 | `make docker-webhook` | Build webhook image |
@@ -68,8 +70,26 @@ Read secret from /secrets/<ref> (tmpfs)
 - Secrets never touch disk — tmpfs only (medium: Memory)
 - Secrets never appear in env vars of app container
 - Provider selection is annotation-driven, zero code changes
-- Factory pattern with lazy init — no cloud SDK loaded unless needed
+- Factory pattern with lazy initialization. Optional providers are compiled only
+  when corresponding build tags are enabled.
 - All providers implement the same `SecretProvider` interface
+
+## Design Philosophy
+
+CHUR intentionally favors simplicity over features. Every new feature must justify
+its weight.
+
+When proposing changes, prefer:
+
+- smaller binaries
+- fewer dependencies
+- stateless components
+- Kubernetes-native behavior
+- explicit configuration
+- minimal runtime overhead
+
+Avoid introducing additional control-plane components, CRDs, controllers, or
+long-running background services unless they solve a demonstrated user problem.
 
 ## Coding Conventions
 
@@ -126,23 +146,41 @@ Read secret from /secrets/<ref> (tmpfs)
 - `azure-sdk-for-go` (Key Vault), Managed Identity
 - Test: Azurite
 
-### Phase 3: Enterprise Features
+### Phase 3: Optional Enhancements
 
-**3a: Sidecar Hot-Reload** — inotify + polling, update secrets without Pod restart. Annotation `chur.io/reload: "30s"`.
+Additional runtime improvements or observability only if demonstrated user
+demand exists. No control-plane components unless they solve a real user
+problem.
 
-**3b: Observability** — structured JSON logs, Prometheus metrics (`chur_secret_injections_total`, `chur_injection_duration_seconds`), `/metrics` endpoint.
+Examples that may be considered later:
 
-**3c: Security Hardening** — secret size limits, allowed namespaces, audit logging.
+- Sidecar hot-reload (inotify + polling).
+- Prometheus metrics endpoint (`/metrics`).
+- Advanced audit logging beyond structured JSON logs.
 
 ### Phase Architecture
 
 ```
 Phase 1                Phase 2                Phase 3
 ┌──────────────┐      ┌──────────────┐       ┌──────────────┐
-│  env         │      │  aws         │       │  sidecar     │
-│  local       │      │  gcp         │       │  hot-reload  │
-│  k8s         │ ───► │  azure       │ ───►  │  prometheus  │
-│  webhook     │      │  vault       │       │  audit       │
-│  mutation    │      │  build tags  │       │  hardening   │
+│  env         │      │  aws         │       │  optional    │
+│  local       │      │  gcp         │       │  runtime     │
+│  k8s         │ ───► │  azure       │ ───►  │  improvements│
+│  webhook     │      │  vault       │       │  (only if    │
+│  mutation    │      │  build tags  │       │  demand)     │
 └──────────────┘      └──────────────┘       └──────────────┘
+
+## Release Workflow
+
+Before preparing a release:
+
+- Update README if behavior changed.
+- Update THREAT_MODEL.md if security assumptions changed.
+- Update CHANGELOG.
+- Run:
+  - `make check`
+  - `make vuln`
+  - `make e2e`
+
+Push a version tag (e.g. `v0.2.0`) to trigger the GitHub Actions release workflow.
 ```

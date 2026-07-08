@@ -45,6 +45,7 @@ func NewServer(cfg *Config) (*Server, error) {
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
+		slog.Warn("method not allowed", "method", r.Method, "path", r.URL.Path)
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
@@ -54,6 +55,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	select {
 	case s.sem <- struct{}{}:
 	case <-r.Context().Done():
+		slog.Warn("admission review rejected, server busy or request canceled")
 		http.Error(w, "server busy or request canceled", http.StatusServiceUnavailable)
 		return
 	}
@@ -65,6 +67,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	var review admissionv1.AdmissionReview
 	if err := json.NewDecoder(r.Body).Decode(&review); err != nil {
+		slog.Warn("failed to decode admission review", "error", err)
 		http.Error(w, fmt.Sprintf("failed to decode: %v", err), http.StatusBadRequest)
 		return
 	}
@@ -99,7 +102,7 @@ func (s *Server) mutate(review *admissionv1.AdmissionReview) *admissionv1.Admiss
 	resp.Response = &admissionv1.AdmissionResponse{UID: review.Request.UID}
 
 	if !isPodRequest(review.Request.Kind) {
-		slog.Error("invalid request kind", "kind", review.Request.Kind)
+		slog.Warn("invalid request kind", "kind", kindString(review.Request.Kind))
 		resp.Response.Allowed = false
 		resp.Response.Result = &metav1.Status{
 			Code:    http.StatusBadRequest,
@@ -110,7 +113,7 @@ func (s *Server) mutate(review *admissionv1.AdmissionReview) *admissionv1.Admiss
 
 	pod := &corev1.Pod{}
 	if _, _, err := s.deserializer.Decode(review.Request.Object.Raw, nil, pod); err != nil {
-		slog.Error("failed to decode pod", "error", err)
+		slog.Warn("failed to decode pod", "error", err)
 		resp.Response.Allowed = false
 		resp.Response.Result = &metav1.Status{
 			Code:    http.StatusBadRequest,
@@ -121,12 +124,16 @@ func (s *Server) mutate(review *admissionv1.AdmissionReview) *admissionv1.Admiss
 
 	patch, err := MutatePod(pod, s.cfg)
 	if err != nil {
-		slog.Error("failed to mutate pod", "pod", pod.Name, "namespace", pod.Namespace, "error", err)
-		resp.Response.Allowed = false
 		code := http.StatusInternalServerError
 		if errors.Is(err, ErrValidation) {
 			code = http.StatusBadRequest
+			slog.Warn("pod mutation validation failed",
+				"pod", pod.Name, "namespace", pod.Namespace, "error", err)
+		} else {
+			slog.Error("failed to mutate pod",
+				"pod", pod.Name, "namespace", pod.Namespace, "error", err)
 		}
+		resp.Response.Allowed = false
 		resp.Response.Result = &metav1.Status{
 			Code:    int32(code),
 			Message: fmt.Sprintf("failed to mutate pod: %v", err),
@@ -140,11 +147,13 @@ func (s *Server) mutate(review *admissionv1.AdmissionReview) *admissionv1.Admiss
 		return resp
 	}
 
+	providerName := pod.Annotations["chur.io/provider"]
+
 	// Dry-run: return Allowed without patches. Webhooks must not actuate
 	// side effects (init container creation, file writes) during dry-run.
 	if review.Request.DryRun != nil && *review.Request.DryRun {
 		slog.Info("dry-run request, skipping mutation",
-			"pod", pod.Name, "namespace", pod.Namespace)
+			"pod", pod.Name, "namespace", pod.Namespace, "provider", providerName)
 		resp.Response.Allowed = true
 		return resp
 	}
@@ -159,6 +168,9 @@ func (s *Server) mutate(review *admissionv1.AdmissionReview) *admissionv1.Admiss
 		}
 		return resp
 	}
+
+	slog.Info("pod mutated",
+		"pod", pod.Name, "namespace", pod.Namespace, "provider", providerName)
 
 	pt := admissionv1.PatchTypeJSONPatch
 	resp.Response.Allowed = true

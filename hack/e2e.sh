@@ -59,6 +59,12 @@ else
 	kind load image-archive "$TMPDIR/init.tar" --name "$E2E_CLUSTER"
 fi
 
+echo "Preparing local provider test files on Kind node..."
+NODE_NAME=$(kind get nodes --name "$E2E_CLUSTER" | head -n 1)
+$DOCKER exec "$NODE_NAME" mkdir -p /etc/chur/secrets
+$DOCKER exec "$NODE_NAME" sh -c 'echo -n "e2e-local-secret-value-12345" > /etc/chur/secrets/e2e-local-secret'
+$DOCKER exec "$NODE_NAME" dd if=/dev/zero of=/etc/chur/secrets/e2e-large-secret bs=1024 count=1100 status=none
+
 echo "Creating test namespace $E2E_NAMESPACE..."
 kubectl create namespace "$E2E_NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
 

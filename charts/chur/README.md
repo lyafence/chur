@@ -1,6 +1,6 @@
 # chur Helm Chart
 
-Universal Multi-Cloud & Bare-Metal Zero-Trust Secret Injector for Kubernetes.
+Lightweight in-memory secret injection for Kubernetes.
 
 ## Requirements
 

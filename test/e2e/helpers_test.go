@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"testing"
 	"time"
 
@@ -35,17 +36,13 @@ func deleteK8sSecret(t *testing.T, cs kubernetes.Interface, ns, name string) {
 	}
 }
 
-func createTestPod(t *testing.T, cs kubernetes.Interface, ns, name, secretRef, secretKey string) {
+func createTestPod(t *testing.T, cs kubernetes.Interface, ns, name string, annotations map[string]string) {
 	t.Helper()
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:   name,
-			Labels: map[string]string{"app": "chur-e2e"},
-			Annotations: map[string]string{
-				"chur.io/provider":   "k8s",
-				"chur.io/secret-ref": secretRef,
-				"chur.io/secret-key": secretKey,
-			},
+			Name:        name,
+			Labels:      map[string]string{"app": "chur-e2e"},
+			Annotations: annotations,
 		},
 		Spec: corev1.PodSpec{
 			ServiceAccountName: "chur-init",
@@ -59,6 +56,23 @@ func createTestPod(t *testing.T, cs kubernetes.Interface, ns, name, secretRef, s
 	if _, err := cs.CoreV1().Pods(ns).Create(t.Context(), pod, metav1.CreateOptions{}); err != nil {
 		t.Fatalf("create test pod: %v", err)
 	}
+}
+
+func createK8sTestPod(t *testing.T, cs kubernetes.Interface, ns, name, secretRef, secretKey string) {
+	t.Helper()
+	createTestPod(t, cs, ns, name, map[string]string{
+		"chur.io/provider":   "k8s",
+		"chur.io/secret-ref": secretRef,
+		"chur.io/secret-key": secretKey,
+	})
+}
+
+func createLocalTestPod(t *testing.T, cs kubernetes.Interface, ns, name, secretRef string) {
+	t.Helper()
+	createTestPod(t, cs, ns, name, map[string]string{
+		"chur.io/provider":   "local",
+		"chur.io/secret-ref": secretRef,
+	})
 }
 
 func deletePod(t *testing.T, cs kubernetes.Interface, ns, name string) {
@@ -128,6 +142,80 @@ func waitForPodReady(t *testing.T, cs kubernetes.Interface, ns, name string, tim
 		t.Fatalf("pod %s not ready within %v: %v", name, timeout, err)
 	}
 	t.Logf("pod %s ready", name)
+}
+
+func waitForInitContainerError(t *testing.T, cs kubernetes.Interface, ns, name string, timeout time.Duration, substring string) error {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), timeout)
+	defer cancel()
+
+	var lastLogs string
+	err := wait.PollUntilContextTimeout(ctx, 2*time.Second, timeout, true, func(ctx context.Context) (bool, error) {
+		pod, err := cs.CoreV1().Pods(ns).Get(ctx, name, metav1.GetOptions{})
+		if err != nil {
+			return false, nil
+		}
+
+		if pod.Status.Phase == corev1.PodRunning {
+			return false, fmt.Errorf("pod %s became Running, expected init container failure", name)
+		}
+
+		for _, init := range pod.Status.InitContainerStatuses {
+			if init.State.Terminated != nil {
+				logs, logErr := cs.CoreV1().Pods(ns).GetLogs(name, &corev1.PodLogOptions{
+					Container: init.Name,
+				}).DoRaw(ctx)
+				if logErr == nil {
+					lastLogs = string(logs)
+					if strings.Contains(lastLogs, substring) {
+						return true, nil
+					}
+				}
+				return false, fmt.Errorf("init container terminated without expected error: exit=%d logs=%s",
+					init.State.Terminated.ExitCode, lastLogs)
+			}
+			if init.State.Waiting != nil {
+				reason := init.State.Waiting.Reason
+				if reason == "CrashLoopBackOff" || reason == "Error" {
+					logs, logErr := cs.CoreV1().Pods(ns).GetLogs(name, &corev1.PodLogOptions{
+						Container: init.Name,
+					}).DoRaw(ctx)
+					if logErr == nil {
+						lastLogs = string(logs)
+						if strings.Contains(lastLogs, substring) {
+							return true, nil
+						}
+					}
+				}
+			}
+		}
+		return false, nil
+	})
+	if err != nil {
+		return fmt.Errorf("waiting for init container error %q: %w; last logs:\n%s", substring, err, lastLogs)
+	}
+	t.Logf("init container failed as expected: %q found in logs", substring)
+	return nil
+}
+
+func createTestPodExpectError(cs kubernetes.Interface, ns, name string, annotations map[string]string) error {
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        name,
+			Labels:      map[string]string{"app": "chur-e2e"},
+			Annotations: annotations,
+		},
+		Spec: corev1.PodSpec{
+			ServiceAccountName: "chur-init",
+			Containers: []corev1.Container{{
+				Name:    "app",
+				Image:   "busybox",
+				Command: []string{"sleep", "9999"},
+			}},
+		},
+	}
+	_, err := cs.CoreV1().Pods(ns).Create(context.Background(), pod, metav1.CreateOptions{})
+	return err
 }
 
 func execInPod(kubeconfig, ns, pod, container string, cmd ...string) (string, string, error) {

@@ -41,4 +41,3 @@ func Get(name string) (Factory, bool) {
 	f, ok := registry[name]
 	return f, ok
 }
-

@@ -1,4 +1,4 @@
-.PHONY: build build-webhook build-init lint test check clean \
+.PHONY: build build-webhook build-init fmt lint test check vuln clean \
         docker docker-webhook docker-init release e2e helm-package
 
 APP_NAME    ?= chur
@@ -26,6 +26,9 @@ build-webhook:
 build-init:
 	CGO_ENABLED=0 go build $(GOFLAGS) $(LDFLAGS) -o bin/chur-init ./cmd/init
 
+fmt:
+	gofmt -w .
+
 lint:
 	golangci-lint run ./...
 
@@ -33,6 +36,9 @@ test:
 	go test -race -count=1 -timeout 120s ./...
 
 check: lint test build
+
+vuln:
+	govulncheck ./...
 
 clean:
 	rm -rf bin/ dist/ release/
