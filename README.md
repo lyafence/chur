@@ -6,7 +6,7 @@
 
 **Lightweight in-memory secret injection for Kubernetes.**
 
-CHUR is not another secrets manager. It is the simplest secure way to deliver a
+chur is not another secrets manager. It is the simplest secure way to deliver a
 secret directly into the memory of a Kubernetes workload. See
 [THREAT_MODEL.md](THREAT_MODEL.md) for the security model.
 
@@ -15,33 +15,9 @@ secret directly into the memory of a Kubernetes workload. See
 chur is a Kubernetes admission webhook that intercepts Pod creation and
 injects secrets directly into container memory (tmpfs), bypassing application
 environment variables and Kubernetes Secret volumes. Secrets are sourced from
-any backend via a pluggable provider architecture — AWS Secrets Manager, GCP
-Secret Manager, Azure Key Vault, HashiCorp Vault, local files, Kubernetes
-Secrets, or environment variables.
-
-## Why CHUR?
-
-| CHUR | Kubernetes Secret volume |
-|------|--------------------------|
-| In-memory delivery | Secret volume |
-| No application env vars | Env vars optional |
-| Admission-based injection | Native volume mount |
-| Lightweight | Built-in |
-
-## Security
-
-- Secrets are delivered to a tmpfs (`emptyDir` with `medium: Memory`) and never
-  written to disk.
-- The secret value is never injected into the application container environment.
-- `chur-init` runs as a non-root user with a read-only root filesystem and
-  dropped capabilities.
-- The secret file is written with group-readable permissions (`0640`) and shared
-  via `fsGroup`.
-- Unknown providers are rejected at admission time.
-- Request size, concurrency, and secret size are bounded.
-
-See [THREAT_MODEL.md](THREAT_MODEL.md) for the full threat model and
-non-goals.
+environment variables, local files on the node, or Kubernetes Secrets via a
+pluggable provider architecture. Additional cloud providers (AWS, GCP, Azure,
+Vault) are planned for future releases.
 
 ## Architecture
 
@@ -65,13 +41,105 @@ non-goals.
                          └──────────────┘
 ```
 
+## Why chur?
+
+| chur | Kubernetes Secret volume |
+|------|--------------------------|
+| In-memory delivery | Secret volume |
+| No application env vars | Env vars optional |
+| Admission-based injection | Native volume mount |
+| Lightweight | Kubernetes built-in |
+
+## Security
+
+- Secrets are delivered to a tmpfs (`emptyDir` with `medium: Memory`) and never
+  written to disk.
+- The secret value is never injected into the application container environment.
+- `chur-init` runs as a non-root user with a read-only root filesystem and
+  dropped capabilities.
+- The secret file is written with group-readable permissions (`0640`) and shared
+  via `fsGroup`.
+- Unknown providers are rejected at admission time.
+- Request size, concurrency, and secret size are bounded.
+
+See [THREAT_MODEL.md](THREAT_MODEL.md) for the full threat model and
+non-goals.
+
+## Prerequisites
+
+- Kubernetes cluster 1.28+
+- `helm` 3.x
+- `kubectl` with access to the cluster
+
+## Quick Start
+
+```bash
+# Add the repository and install the webhook
+helm repo add chur https://lyafence.github.io/chur
+helm repo update
+helm install chur chur/chur --namespace chur-system --create-namespace --wait
+
+# Deploy a test Pod and verify injection
+kubectl create secret generic my-secret --from-literal=token=hello
+kubectl run test-pod --image=busybox --restart=Never \
+  --annotations=chur.io/provider=k8s \
+  --annotations=chur.io/secret-ref=my-secret \
+  --annotations=chur.io/secret-key=token \
+  --serviceaccount=chur-init \
+  --command -- sleep 9999
+kubectl exec test-pod -- cat /secrets/my-secret
+```
+
+The default TLS mode uses cert-manager. For development without cert-manager
+(`tls.provider=helmGenerated`) or other TLS options, see
+[`charts/chur/values.yaml`](charts/chur/values.yaml) and the
+[Helm chart README](charts/chur/README.md).
+
+## Usage
+
+Annotate your Pod with the secret source:
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: my-app
+  annotations:
+    chur.io/provider: "k8s"
+    chur.io/secret-ref: "db-credentials"
+    chur.io/secret-key: "password"   # optional: key within the k8s Secret
+    chur.io/mount-path: "/secrets"
+spec:
+  serviceAccountName: chur-init
+  containers:
+    - name: app
+      image: my-app:latest
+```
+
+chur-webhook intercepts the Pod, injects an `emptyDir` with `medium: Memory`
+and a `chur-init` init container that fetches the secret and writes it to tmpfs.
+The application reads the secret from `/secrets/<ref>` (e.g. `/secrets/db-credentials`).
+
+> **Note:** Secrets are fetched once at Pod startup. To rotate secrets, restart
+> the Pod (e.g. via `kubectl rollout restart`). Hot-reload may be considered in
+> later versions.
+
+### Annotations
+
+| Annotation | Description | Required |
+|------------|-------------|----------|
+| `chur.io/provider` | Secret backend: `env`, `local`, or `k8s` | Yes |
+| `chur.io/secret-ref` | Reference to the secret (env var, file name, or k8s Secret name) | Yes |
+| `chur.io/secret-key` | Extract a specific key from a JSON secret value | No |
+| `chur.io/mount-path` | Path to mount the tmpfs volume (default: `/secrets`) | No |
+
 ## Providers
 
 | Provider   | Backend                          | Phase |
 |------------|----------------------------------|-------|
 | `env`      | Environment variables (dev)      | 1 ✅  |
 | `local`    | Files on host (bare-metal)       | 1 ✅  |
-| `k8s`      | Kubernetes Secrets (fallback)    | 1 ✅  |
+| `k8s`      | Kubernetes Secrets               | 1 ✅  |
 | `aws`      | AWS Secrets Manager              | 2 🚧  |
 | `gcp`      | GCP Secret Manager               | 2 🚧  |
 | `azure`    | Azure Key Vault                  | 2 🚧  |
@@ -91,121 +159,22 @@ The secret is still delivered to the application container through the
 in-memory `emptyDir` volume at `/secrets` (or the path specified by
 `chur.io/mount-path`).
 
-## Quick Start
-
-```bash
-# Build both binaries
-make build
-
-# Run tests
-make test
-
-# Build Docker images
-make docker
-```
-
-## Usage
-
-Annotate your Pod with the secret source:
-
-```yaml
-apiVersion: v1
-kind: Pod
-metadata:
-  name: my-app
-  annotations:
-    chur.io/provider: "k8s"
-    chur.io/secret-ref: "db-credentials"
-    chur.io/secret-key: "password"   # optional: key within the k8s Secret
-    chur.io/mount-path: "/secrets"
-spec:
-  containers:
-    - name: app
-      image: my-app:latest
-```
-
-chur-webhook intercepts the Pod, injects an `emptyDir` with `medium: Memory`
-and a `chur-init` init container that fetches the secret and writes it to tmpfs.
-The application reads the secret from `/secrets/<ref>` (e.g. `/secrets/db-credentials`).
-
-> **Note:** In Phase 1, secrets are fetched once at Pod startup. To rotate
-> secrets, restart the Pod (e.g. via `kubectl rollout restart`). Hot-reload
-> is planned for Phase 3.
-
 ## Configuration
 
-Main environment variables (see [`.env.example`](./.env.example) for the full list):
+Main environment variables. For all other variables (TLS auto-generation, mTLS,
+init container configuration), see [`.env.example`](.env.example).
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `CHUR_LISTEN` | `:8443` | Webhook listen address (admission) |
 | `CHUR_HEALTH_LISTEN` | `:8080` | Webhook listen address (health probes) |
 | `CHUR_TLS_MODE` | `server` | TLS mode: `server` or `mtls` |
-| `CHUR_TLS_AUTO_GENERATE` | — | Set to `1` to auto-generate self-signed TLS cert when not mounted (dev only) |
-| `CHUR_TLS_CERT_DNS_NAME` | `localhost` | DNS name for auto-generated cert (only when `CHUR_TLS_AUTO_GENERATE=1`) |
-| `CHUR_CLIENT_CA_PATH` | `/etc/chur/ca.crt` | Path to CA certificate for verifying API server client cert (mtls only) |
 | `CHUR_VOLUME_SIZE_LIMIT` | `10Mi` | Max size of tmpfs volume per pod |
 | `CHUR_ALLOWED_NAMESPACES` | (all) | Comma-separated allowlist of namespaces |
 | `CHUR_INIT_IMAGE` | `ghcr.io/lyafence/chur-init:latest` | Init container image |
 | `CHUR_PROVIDER` | `env` | Secret provider: `env`, `local`, `k8s` |
 | `CHUR_MAX_SECRET_SIZE` | `1Mi` | Max secret size in init container |
 | `CHUR_MAX_CONCURRENT` | `100` | Maximum concurrent admission review requests |
-
-## Helm Installation
-
-A Helm chart is provided under `charts/chur/`.
-
-### Production (with cert-manager)
-
-```bash
-helm install chur ./charts/chur --wait
-```
-
-Requirements:
-- Kubernetes >= 1.28
-- [cert-manager](https://cert-manager.io) installed in the cluster
-
-The chart creates a self-signed `Issuer` and a `Certificate` for the webhook's
-TLS cert. The `caBundle` in the `MutatingWebhookConfiguration` is injected
-automatically by cert-manager's `cainjector`.
-
-### Development / CI (without cert-manager)
-
-```bash
-helm install chur ./charts/chur -f ./charts/chur/values-dev.yaml --wait
-```
-
-### User-provided certificate
-
-```bash
-helm install chur ./charts/chur \
-  --set tls.provider=userSecret \
-  --set tls.userSecret.name=my-tls-secret \
-  --set tls.userSecret.caBundle="$(base64 -w0 < ca.crt)"
-```
-
-### mTLS
-
-By default, the webhook only presents a TLS server certificate. To require the
-API server to present a client certificate, set `webhook.tlsMode=mtls` and
-provide the CA bundle that signed the API server's client certificate:
-
-```bash
-helm install chur ./charts/chur \
-  --set webhook.tlsMode=mtls \
-  --set-file mtls.caBundle=api-server-client-ca.crt
-```
-
-> ⚠️ mTLS mode is not available in most managed Kubernetes clusters (EKS, GKE,
-> AKS) unless you have access to the API server's command-line flags.
-
-### Using the Helm repository
-
-```bash
-helm repo add chur https://lyafence.github.io/chur
-helm repo update
-helm install chur chur/chur --wait
-```
 
 ## RBAC Requirements
 
@@ -233,7 +202,7 @@ roleRef:
   name: chur-secret-reader
 subjects:
 - kind: ServiceAccount
-  name: default
+  name: chur-init
 ```
 
 For production, consider restricting access to specific secrets via
@@ -241,4 +210,4 @@ For production, consider restricting access to specific secrets via
 
 ## License
 
-MIT — see [LICENSE](./LICENSE) for details.
+MIT — see [LICENSE](LICENSE) for details.

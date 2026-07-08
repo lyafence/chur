@@ -76,7 +76,7 @@ Read secret from /secrets/<ref> (tmpfs)
 
 ## Design Philosophy
 
-CHUR intentionally favors simplicity over features. Every new feature must justify
+chur intentionally favors simplicity over features. Every new feature must justify
 its weight.
 
 When proposing changes, prefer:
@@ -110,6 +110,10 @@ long-running background services unless they solve a demonstrated user problem.
 - **YAGNI** — don't add providers "just in case". Add when needed.
 - **Global state creep** — the provider registry is justified; any other global state needs documentation.
 - **SDK bloat** — prefer lightweight HTTP clients over full cloud SDKs where possible.
+  The `k8s` provider is an exception (requires `client-go`). For cloud secret stores
+  (AWS, GCP, Azure), prefer minimal HTTP implementations to keep the init binary
+  small. A secrets manager API typically needs only one operation — `GetSecret` —
+  which does not justify pulling in an entire cloud SDK.
 
 ## Roadmap
 

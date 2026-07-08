@@ -24,6 +24,10 @@ build-webhook:
 	CGO_ENABLED=0 go build $(GOFLAGS) $(LDFLAGS) -o bin/chur-webhook ./cmd/webhook
 
 build-init:
+	CGO_ENABLED=0 go build $(GOFLAGS) -tags provider_k8s $(LDFLAGS) -o bin/chur-init ./cmd/init
+
+# Build init without the k8s provider (smaller binary, 12 MB vs 26 MB)
+build-init-minimal:
 	CGO_ENABLED=0 go build $(GOFLAGS) $(LDFLAGS) -o bin/chur-init ./cmd/init
 
 fmt:
@@ -33,7 +37,7 @@ lint:
 	golangci-lint run ./...
 
 test:
-	go test -race -count=1 -timeout 120s ./...
+	go test -race -count=1 -timeout 120s -tags provider_k8s ./...
 
 check: lint test build
 
@@ -54,6 +58,7 @@ docker-init:
 	$(DOCKER) build --platform $(TARGETOS)/$(TARGETARCH) \
 		--build-arg TARGETOS=$(TARGETOS) \
 		--build-arg TARGETARCH=$(TARGETARCH) \
+		--build-arg GOFLAGS="-tags provider_k8s" \
 		-t $(APP_NAME)-init:$(VERSION) -f Dockerfile.init .
 
 docker: docker-webhook docker-init

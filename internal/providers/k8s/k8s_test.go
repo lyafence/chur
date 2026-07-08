@@ -1,3 +1,5 @@
+//go:build provider_k8s
+
 package k8s
 
 import (

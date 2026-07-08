@@ -18,7 +18,7 @@ webhooks:
         path: /
         port: {{ .Values.service.port }}
       {{- if ne .Values.tls.provider "certManager" }}
-      caBundle: {{ .Values.tls.userSecret.caBundle | default "" }}
+      caBundle: {{ required "tls.userSecret.caBundle is required when tls.provider is not certManager" .Values.tls.userSecret.caBundle }}
       {{- end }}
     rules:
       - operations: ["CREATE"]

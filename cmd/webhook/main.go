@@ -47,6 +47,10 @@ func main() {
 		cfg.InitImage = v
 	}
 	if v := os.Getenv("CHUR_MAX_SECRET_SIZE"); v != "" {
+		if _, err := resource.ParseQuantity(v); err != nil {
+			slog.Error("invalid CHUR_MAX_SECRET_SIZE", "value", v, "error", err)
+			os.Exit(1)
+		}
 		cfg.MaxSecretSize = v
 	}
 	if v := os.Getenv("CHUR_LOCAL_BASE_PATH"); v != "" {

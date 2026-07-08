@@ -10,7 +10,6 @@ import (
 
 	"github.com/lyafence/chur/internal/provider"
 	_ "github.com/lyafence/chur/internal/providers/env"
-	_ "github.com/lyafence/chur/internal/providers/k8s"
 	_ "github.com/lyafence/chur/internal/providers/local"
 	"github.com/lyafence/chur/internal/validate"
 	"k8s.io/apimachinery/pkg/api/resource"

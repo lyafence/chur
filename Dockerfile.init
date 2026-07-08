@@ -2,11 +2,12 @@
 FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS builder
 ARG TARGETOS
 ARG TARGETARCH
+ARG GOFLAGS=""
 WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -ldflags="-s -w" -o chur-init ./cmd/init
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build ${GOFLAGS} -ldflags="-s -w" -o chur-init ./cmd/init
 
 FROM gcr.io/distroless/static-debian13:nonroot
 COPY --from=builder /app/chur-init /chur-init

@@ -1,10 +1,10 @@
-# CHUR Threat Model
+# chur Threat Model
 
 This document describes the security model of `chur` as of v0.2.
 
 ## Security Goals
 
-CHUR aims to:
+chur aims to:
 
 - Deliver secrets directly into container memory (tmpfs) without exposing them
   to the application environment variables.
@@ -23,7 +23,7 @@ CHUR aims to:
 | Secret material | tmpfs volume inside the Pod | Short-lived; destroyed with the Pod. |
 | TLS credentials | Kubernetes Secret mounted to `chur-webhook` | Used for HTTPS admission endpoint. |
 | Service account tokens | Projected into `chur-init` | Used by the `k8s` provider only. |
-| Provider credentials | Provider-specific (env, file, cloud IAM) | CHUR does not store them. |
+| Provider credentials | Provider-specific (env, file, cloud IAM) | chur does not store them. |
 
 ## Trust Boundaries
 
@@ -53,16 +53,16 @@ Trust assumptions:
 
 - **Scenario:** Secret value ends up in Kubernetes etcd, node disk, or container
   image layers.
-- **Mitigation:** CHUR writes secrets to an `emptyDir` volume with
+- **Mitigation:** chur writes secrets to an `emptyDir` volume with
   `medium: Memory`. The value never touches the container image, is not stored
-  in etcd by CHUR, and is not written to a hostPath volume.
+  in etcd by chur, and is not written to a hostPath volume.
 - **Note:** When using the `k8s` provider, the upstream Kubernetes Secret still
-  exists in etcd. CHUR changes the delivery mechanism, not the storage backend.
+  exists in etcd. chur changes the delivery mechanism, not the storage backend.
 
 ### T2: Secret leak via environment variables
 
 - **Scenario:** Secret is exposed to the application container through env vars.
-- **Mitigation:** CHUR never injects the secret value into the application
+- **Mitigation:** chur never injects the secret value into the application
   container environment. The secret only exists as a file in tmpfs.
 
 ### T3: Unauthorized mutation of Pods
@@ -105,7 +105,7 @@ Trust assumptions:
 ### T8: Information disclosure through logs
 
 - **Scenario:** Secret values are logged.
-- **Mitigation:** CHUR logs structured metadata only (provider, reference, path,
+- **Mitigation:** chur logs structured metadata only (provider, reference, path,
   bytes). Secret values are never logged.
 
 ## Non-Goals
@@ -121,7 +121,7 @@ The following are intentionally out of scope for v0.2:
 
 ## Basic Audit
 
-CHUR emits structured JSON logs from both `chur-webhook` and `chur-init`. These
+chur emits structured JSON logs from both `chur-webhook` and `chur-init`. These
 logs are the basic audit trail: they record when a secret is injected, by which
 provider, and for which reference. Advanced audit capabilities (for example,
 streaming to a SIEM or Kubernetes Audit Events integration) are not implemented

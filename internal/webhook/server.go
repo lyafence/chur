@@ -147,7 +147,7 @@ func (s *Server) mutate(review *admissionv1.AdmissionReview) *admissionv1.Admiss
 		return resp
 	}
 
-	providerName := pod.Annotations["chur.io/provider"]
+	providerName := pod.Annotations[annotationProvider]
 
 	// Dry-run: return Allowed without patches. Webhooks must not actuate
 	// side effects (init container creation, file writes) during dry-run.
