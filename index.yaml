@@ -12,28 +12,4 @@ entries:
     urls:
     - https://github.com/lyafence/chur/releases/download/v0.2.3/chur-0.2.3.tgz
     version: 0.2.3
-  - apiVersion: v2
-    appVersion: 0.2.2
-    created: "2026-07-08T20:39:07.445353177Z"
-    description: Universal Multi-Cloud & Bare-Metal Zero-Trust Secret Injector for
-      Kubernetes
-    digest: 40d63c3b992d6b253d62852ce8c30f4142f3bcce67ff18aa79ac454fd6ea0671
-    kubeVersion: '>=1.28.0-0'
-    name: chur
-    type: application
-    urls:
-    - https://github.com/lyafence/chur/releases/download/0.2.2/chur-0.2.2.tgz
-    version: 0.2.2
-  - apiVersion: v2
-    appVersion: 0.2.1
-    created: "2026-07-06T00:28:36.673361609Z"
-    description: Universal Multi-Cloud & Bare-Metal Zero-Trust Secret Injector for
-      Kubernetes
-    digest: a22b15c875c8dae829439e58b1552dc52283d71f1e3cc5856a387c34b01666aa
-    kubeVersion: '>=1.28.0-0'
-    name: chur
-    type: application
-    urls:
-    - https://github.com/lyafence/chur/releases/download/chur-0.2.1/chur-0.2.1.tgz
-    version: 0.2.1
 generated: "2026-07-09T20:41:21.864258581Z"
