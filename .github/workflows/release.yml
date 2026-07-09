@@ -59,6 +59,17 @@ jobs:
           git config user.name "$GITHUB_ACTOR"
           git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
 
+      - name: Generate release notes
+        run: |
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          if [ -n "$PREV_TAG" ]; then
+            {
+              echo "CHANGELOG<<EOF"
+              git log --no-merges --format="* %s" "$PREV_TAG..HEAD"
+              echo "EOF"
+            } >> $GITHUB_ENV
+          fi
+
       - name: Publish Helm chart
         uses: helm/chart-releaser-action@v1
         with:
@@ -69,3 +80,4 @@ jobs:
         env:
           CR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CR_RELEASE_NAME_TEMPLATE: "v{{ .Version }}"
+          CR_RELEASE_DESCRIPTION: ${{ env.CHANGELOG }}
