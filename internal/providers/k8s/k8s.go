@@ -8,11 +8,12 @@ import (
 	"os"
 	"sort"
 
-	"github.com/lyafence/chur/internal/provider"
-	"github.com/lyafence/chur/internal/validate"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+
+	"github.com/lyafence/chur/internal/provider"
+	"github.com/lyafence/chur/internal/validate"
 )
 
 type K8sProvider struct {

@@ -2,6 +2,6 @@ apiVersion: v2
 name: chur
 description: Lightweight in-memory secret injection for Kubernetes
 type: application
-version: 0.2.1
-appVersion: "0.2.1"
+version: 0.0.0
+appVersion: "0.0.0"
 kubeVersion: ">=1.28.0-0"

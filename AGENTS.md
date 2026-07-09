@@ -19,7 +19,6 @@
 | `make e2e` | End-to-end tests (Kind → deploy → verify). Set `E2E_SKIP_CLEANUP=true` to keep the Kind cluster. |
 | `make release` | Build native binary tarball (local/CI quick release) |
 | `make helm-package` | Package the Helm chart into `dist/` |
-| `goreleaser release` | Full cross-platform release + Docker images |
 
 ## Package Map
 
@@ -137,16 +136,16 @@ long-running background services unless they solve a demonstrated user problem.
 
 ### Phase 2: Cloud Providers — AWS + GCP + Azure
 
-**2a: AWS Provider** (`internal/provider/providers/aws/`)
+**2a: AWS Provider** (`internal/providers/aws/`)
 - `aws-sdk-go-v2` (Secrets Manager), IRSA (sts.AssumeRoleProvider)
 - Build tag: `go build -tags aws` — SDK only in cloud builds
 - Test: LocalStack in docker-compose
 
-**2b: GCP Provider** (`internal/provider/providers/gcp/`)
+**2b: GCP Provider** (`internal/providers/gcp/`)
 - GCP Secret Manager SDK, Workload Identity Federation
 - Test: fake GCP server
 
-**2c: Azure Provider** (`internal/provider/providers/azure/`)
+**2c: Azure Provider** (`internal/providers/azure/`)
 - `azure-sdk-for-go` (Key Vault), Managed Identity
 - Test: Azurite
 
@@ -180,7 +179,6 @@ Before preparing a release:
 
 - Update README if behavior changed.
 - Update THREAT_MODEL.md if security assumptions changed.
-- Update CHANGELOG.
 - Run:
   - `make check`
   - `make vuln`

@@ -1,0 +1,85 @@
+version: "2"
+
+run:
+  go: "1.26"
+  timeout: 3m
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - revive
+    - gosec
+    - godox
+    - nolintlint
+    - goconst
+    - sloglint
+    - errorlint
+    - misspell
+    - thelper
+    - prealloc
+  settings:
+    revive:
+      rules:
+        - name: var-naming
+        - name: error-return
+        - name: error-naming
+        - name: blank-imports
+        - name: unused-parameter
+    gosec:
+      includes:
+        - G101
+        - G110
+        - G112
+        - G114
+        - G304
+        - G401
+        - G402
+        - G403
+    goconst:
+      ignore-tests: true
+      min-occurrences: 4
+    sloglint:
+      context: all
+      no-mixed-args: true
+    errorlint:
+      errorf: true
+      comparison: true
+    nolintlint:
+      allow-unused: false
+      require-explanation: true
+      require-specific: true
+  exclusions:
+    presets:
+      - std-error-handling
+      - common-false-positives
+    rules:
+      - linters:
+          - gosec
+        path: "cmd/webhook/"
+        text: "G114"
+      - linters:
+          - gosec
+        path: "cmd/init/"
+        text: "G304"
+      - linters:
+          - gosec
+        path: "internal/providers/local/"
+        text: "G304"
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/lyafence/chur

@@ -8,11 +8,12 @@ import (
 	"path/filepath"
 	"time"
 
+	"k8s.io/apimachinery/pkg/api/resource"
+
 	"github.com/lyafence/chur/internal/provider"
 	_ "github.com/lyafence/chur/internal/providers/env"
 	_ "github.com/lyafence/chur/internal/providers/local"
 	"github.com/lyafence/chur/internal/validate"
-	"k8s.io/apimachinery/pkg/api/resource"
 )
 
 var version = "dev"
@@ -21,7 +22,10 @@ const maxRetries = 5
 
 func main() {
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
-	slog.Info("starting chur-init", "version", version)
+
+	ctx := context.Background()
+
+	slog.InfoContext(ctx, "starting chur-init", "version", version)
 
 	providerName := os.Getenv("CHUR_PROVIDER")
 	if providerName == "" {
@@ -34,11 +38,11 @@ func main() {
 	}
 
 	if secretRef == "" {
-		slog.Error("CHUR_SECRET_REF is required")
+		slog.ErrorContext(ctx, "CHUR_SECRET_REF is required")
 		os.Exit(1)
 	}
 	if err := validate.ValidateSecretRef(secretRef); err != nil {
-		slog.Error("invalid CHUR_SECRET_REF", "error", err)
+		slog.ErrorContext(ctx, "invalid CHUR_SECRET_REF", "error", err)
 		os.Exit(1)
 	}
 
@@ -47,13 +51,13 @@ func main() {
 
 	factory, ok := provider.Get(providerName)
 	if !ok {
-		slog.Error("unknown provider", "provider", providerName)
+		slog.ErrorContext(ctx, "unknown provider", "provider", providerName)
 		os.Exit(1)
 	}
 
 	secret, err := backoffFetch(ctx, factory, secretRef)
 	if err != nil {
-		slog.Error("failed to get secret", "ref", secretRef, "error", err)
+		slog.ErrorContext(ctx, "failed to get secret", "ref", secretRef, "error", err)
 		os.Exit(1)
 	}
 
@@ -63,26 +67,26 @@ func main() {
 	}
 	maxBytes, err := resource.ParseQuantity(maxSizeStr)
 	if err != nil {
-		slog.Error("invalid CHUR_MAX_SECRET_SIZE", "value", maxSizeStr, "error", err)
+		slog.ErrorContext(ctx, "invalid CHUR_MAX_SECRET_SIZE", "value", maxSizeStr, "error", err)
 		os.Exit(1)
 	}
 	if int64(len(secret)) > maxBytes.Value() {
-		slog.Error("secret exceeds max size",
+		slog.ErrorContext(ctx, "secret exceeds max size",
 			"ref", secretRef, "size", len(secret), "max", maxBytes.String())
 		os.Exit(1)
 	}
 
 	path := filepath.Join(mountPath, secretRef)
 	if err := os.MkdirAll(mountPath, 0700); err != nil {
-		slog.Error("failed to create mount dir", "path", mountPath, "error", err)
+		slog.ErrorContext(ctx, "failed to create mount dir", "path", mountPath, "error", err)
 		os.Exit(1)
 	}
 	if err := os.WriteFile(path, secret, 0640); err != nil {
-		slog.Error("failed to write secret", "path", path, "error", err)
+		slog.ErrorContext(ctx, "failed to write secret", "path", path, "error", err)
 		os.Exit(1)
 	}
 
-	slog.Info("secret injected", "provider", providerName, "ref", secretRef, "path", path, "bytes", len(secret))
+	slog.InfoContext(ctx, "secret injected", "provider", providerName, "ref", secretRef, "path", path, "bytes", len(secret))
 }
 
 // backoffFetch fetches a secret with exponential backoff retry.
@@ -92,7 +96,7 @@ func backoffFetch(ctx context.Context, factory provider.Factory, secretRef strin
 	for attempt := 0; attempt < maxRetries; attempt++ {
 		if attempt > 0 {
 			delay := time.Duration(1<<(attempt-1))*time.Second + time.Duration(rand.Intn(500))*time.Millisecond
-			slog.Warn("retrying secret fetch", "attempt", attempt+1, "max", maxRetries, "delay", delay.String(), "error", lastErr)
+			slog.WarnContext(ctx, "retrying secret fetch", "attempt", attempt+1, "max", maxRetries, "delay", delay.String(), "error", lastErr)
 			select {
 			case <-ctx.Done():
 				return nil, ctx.Err()

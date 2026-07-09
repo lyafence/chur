@@ -4,11 +4,12 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/lyafence/chur/internal/provider"
-	"github.com/lyafence/chur/internal/validate"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/utils/ptr"
+
+	"github.com/lyafence/chur/internal/provider"
+	"github.com/lyafence/chur/internal/validate"
 )
 
 // ErrValidation indicates that the pod annotations failed validation.
@@ -17,10 +18,11 @@ var ErrValidation = errors.New("validation error")
 
 const (
 	annotationProvider  = "chur.io/provider"
-	annotationSecret    = "chur.io/secret-ref"
-	annotationSecretKey = "chur.io/secret-key"
+	annotationSecret    = "chur.io/secret-ref" //nolint:gosec // annotation key, not a credential
+	annotationSecretKey = "chur.io/secret-key" //nolint:gosec // annotation key, not a credential
 	annotationMount     = "chur.io/mount-path"
 
+	opAdd                    = "add"
 	defaultChurFSGroup int64 = 1001
 )
 
@@ -119,7 +121,7 @@ func MutatePod(pod *corev1.Pod, cfg *Config) ([]PatchOperation, error) {
 	// containers share a supplementary group for the tmpfs volume.
 	if pod.Spec.SecurityContext == nil {
 		patches = append(patches, PatchOperation{
-			Op:   "add",
+			Op:   opAdd,
 			Path: "/spec/securityContext",
 			Value: &corev1.PodSecurityContext{
 				FSGroup: ptr.To(fsGroup),
@@ -127,7 +129,7 @@ func MutatePod(pod *corev1.Pod, cfg *Config) ([]PatchOperation, error) {
 		})
 	} else if pod.Spec.SecurityContext.FSGroup == nil {
 		patches = append(patches, PatchOperation{
-			Op:    "add",
+			Op:    opAdd,
 			Path:  "/spec/securityContext/fsGroup",
 			Value: fsGroup,
 		})
@@ -136,7 +138,7 @@ func MutatePod(pod *corev1.Pod, cfg *Config) ([]PatchOperation, error) {
 	// Add the tmpfs volume, creating the array if necessary.
 	if len(pod.Spec.Volumes) == 0 {
 		patches = append(patches, PatchOperation{
-			Op:   "add",
+			Op:   opAdd,
 			Path: "/spec/volumes",
 			Value: []corev1.Volume{{
 				Name: volName,
@@ -150,7 +152,7 @@ func MutatePod(pod *corev1.Pod, cfg *Config) ([]PatchOperation, error) {
 		})
 	} else {
 		patches = append(patches, PatchOperation{
-			Op:   "add",
+			Op:   opAdd,
 			Path: "/spec/volumes/-",
 			Value: corev1.Volume{
 				Name: volName,
@@ -180,7 +182,7 @@ func MutatePod(pod *corev1.Pod, cfg *Config) ([]PatchOperation, error) {
 	localVolName := "chur-local-base"
 	if providerName == "local" {
 		patches = append(patches, PatchOperation{
-			Op:   "add",
+			Op:   opAdd,
 			Path: "/spec/volumes/-",
 			Value: corev1.Volume{
 				Name: localVolName,
@@ -209,6 +211,9 @@ func MutatePod(pod *corev1.Pod, cfg *Config) ([]PatchOperation, error) {
 			Capabilities: &corev1.Capabilities{
 				Drop: []corev1.Capability{"ALL"},
 			},
+			SeccompProfile: &corev1.SeccompProfile{
+				Type: corev1.SeccompProfileTypeRuntimeDefault,
+			},
 		},
 		Env: initEnv,
 		VolumeMounts: []corev1.VolumeMount{
@@ -224,13 +229,13 @@ func MutatePod(pod *corev1.Pod, cfg *Config) ([]PatchOperation, error) {
 	}
 	if len(pod.Spec.InitContainers) == 0 {
 		patches = append(patches, PatchOperation{
-			Op:    "add",
+			Op:    opAdd,
 			Path:  "/spec/initContainers",
 			Value: []corev1.Container{initContainer},
 		})
 	} else {
 		patches = append(patches, PatchOperation{
-			Op:    "add",
+			Op:    opAdd,
 			Path:  "/spec/initContainers/-",
 			Value: initContainer,
 		})
@@ -240,7 +245,7 @@ func MutatePod(pod *corev1.Pod, cfg *Config) ([]PatchOperation, error) {
 	for i := range pod.Spec.Containers {
 		if len(pod.Spec.Containers[i].VolumeMounts) == 0 {
 			patches = append(patches, PatchOperation{
-				Op:   "add",
+				Op:   opAdd,
 				Path: fmt.Sprintf("/spec/containers/%d/volumeMounts", i),
 				Value: []corev1.VolumeMount{{
 					Name:      volName,
@@ -250,7 +255,7 @@ func MutatePod(pod *corev1.Pod, cfg *Config) ([]PatchOperation, error) {
 			})
 		} else {
 			patches = append(patches, PatchOperation{
-				Op:   "add",
+				Op:   opAdd,
 				Path: fmt.Sprintf("/spec/containers/%d/volumeMounts/-", i),
 				Value: corev1.VolumeMount{
 					Name:      volName,

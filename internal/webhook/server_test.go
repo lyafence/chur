@@ -377,7 +377,7 @@ func TestServer_ConcurrencyLimit(t *testing.T) {
 	blocked := make(chan struct{})
 	release := make(chan struct{})
 
-	srv.mutateFn = func(review *admissionv1.AdmissionReview) *admissionv1.AdmissionReview {
+	srv.mutateFn = func(_ *admissionv1.AdmissionReview) *admissionv1.AdmissionReview {
 		close(blocked)
 		<-release
 		return &admissionv1.AdmissionReview{

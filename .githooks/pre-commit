@@ -11,3 +11,12 @@ if [ -n "$unformatted" ]; then
 fi
 
 echo "✅ format OK"
+
+# Optional: scan for secrets with gitleaks
+if command -v gitleaks >/dev/null 2>&1; then
+  if ! gitleaks dir --no-color --redact=100 . 2>/dev/null; then
+    echo "⚠️  gitleaks: potential secrets detected (non-blocking)"
+  fi
+else
+  echo "📋 gitleaks not installed — skipping secret scan"
+fi

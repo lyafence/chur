@@ -11,8 +11,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/lyafence/chur/internal/webhook"
 	"k8s.io/apimachinery/pkg/api/resource"
+
+	"github.com/lyafence/chur/internal/webhook"
 )
 
 var version = "dev"
@@ -28,7 +29,7 @@ func main() {
 	if v := os.Getenv("CHUR_VOLUME_SIZE_LIMIT"); v != "" {
 		q, err := resource.ParseQuantity(v)
 		if err != nil {
-			slog.Error("invalid CHUR_VOLUME_SIZE_LIMIT", "value", v, "error", err)
+			slog.ErrorContext(ctx, "invalid CHUR_VOLUME_SIZE_LIMIT", "value", v, "error", err)
 			os.Exit(1)
 		}
 		cfg.VolumeSizeLimit = q
@@ -48,7 +49,7 @@ func main() {
 	}
 	if v := os.Getenv("CHUR_MAX_SECRET_SIZE"); v != "" {
 		if _, err := resource.ParseQuantity(v); err != nil {
-			slog.Error("invalid CHUR_MAX_SECRET_SIZE", "value", v, "error", err)
+			slog.ErrorContext(ctx, "invalid CHUR_MAX_SECRET_SIZE", "value", v, "error", err)
 			os.Exit(1)
 		}
 		cfg.MaxSecretSize = v
@@ -59,7 +60,7 @@ func main() {
 	if v := os.Getenv("CHUR_MAX_CONCURRENT"); v != "" {
 		n, err := strconv.Atoi(v)
 		if err != nil || n <= 0 {
-			slog.Error("invalid CHUR_MAX_CONCURRENT", "value", v, "error", err)
+			slog.ErrorContext(ctx, "invalid CHUR_MAX_CONCURRENT", "value", v, "error", err)
 			os.Exit(1)
 		}
 		cfg.MaxConcurrent = n
@@ -67,7 +68,7 @@ func main() {
 
 	srv, err := webhook.NewServer(cfg)
 	if err != nil {
-		slog.Error("failed to create webhook server", "error", err)
+		slog.ErrorContext(ctx, "failed to create webhook server", "error", err)
 		os.Exit(1)
 	}
 
@@ -87,7 +88,7 @@ func main() {
 	case "server", "":
 		tlsMode = webhook.TLSModeServer
 	default:
-		slog.Error("invalid CHUR_TLS_MODE: must be 'server' or 'mtls'", "value", v)
+		slog.ErrorContext(ctx, "invalid CHUR_TLS_MODE: must be 'server' or 'mtls'", "value", v)
 		os.Exit(1)
 	}
 
@@ -100,14 +101,14 @@ func main() {
 		var err error
 		clientCAPEM, err = os.ReadFile(caPath)
 		if err != nil {
-			slog.Error("failed to read client CA", "path", caPath, "error", err)
+			slog.ErrorContext(ctx, "failed to read client CA", "path", caPath, "error", err)
 			os.Exit(1)
 		}
 	}
 
 	tlsCfg, err := webhook.TLSConfig(tlsMode, clientCAPEM)
 	if err != nil {
-		slog.Error("failed to build TLS config", "error", err)
+		slog.ErrorContext(ctx, "failed to build TLS config", "error", err)
 		os.Exit(1)
 	}
 
@@ -120,26 +121,26 @@ func main() {
 			if dnsName == "" {
 				dnsName = "localhost"
 			}
-			slog.Warn("TLS cert not found, generating self-signed certificate",
+			slog.WarnContext(ctx, "TLS cert not found, generating self-signed certificate",
 				"dns_name", dnsName, "path", certFile)
 			tmpDir, err := os.MkdirTemp("", "chur-tls-*")
 			if err != nil {
-				slog.Error("failed to create temp dir for dev cert", "error", err)
+				slog.ErrorContext(ctx, "failed to create temp dir for dev cert", "error", err)
 				os.Exit(1)
 			}
 			defer func() {
 				if err := os.RemoveAll(tmpDir); err != nil {
-					slog.Error("failed to cleanup temp dir", "path", tmpDir, "error", err)
+					slog.ErrorContext(ctx, "failed to cleanup temp dir", "path", tmpDir, "error", err)
 				}
 			}()
 			certFile = tmpDir + "/tls.crt"
 			keyFile = tmpDir + "/tls.key"
 			if err := webhook.GenerateTLSCert(dnsName, certFile, keyFile); err != nil {
-				slog.Error("failed to generate dev TLS cert", "error", err)
+				slog.ErrorContext(ctx, "failed to generate dev TLS cert", "error", err)
 				os.Exit(1)
 			}
 		} else {
-			slog.Error("TLS cert not found and CHUR_TLS_AUTO_GENERATE is not set",
+			slog.ErrorContext(ctx, "TLS cert not found and CHUR_TLS_AUTO_GENERATE is not set",
 				"path", certFile, "hint", "mount certs to /etc/chur/tls or set CHUR_TLS_AUTO_GENERATE=1")
 			os.Exit(1)
 		}
@@ -165,7 +166,7 @@ func main() {
 		IdleTimeout:       30 * time.Second,
 	}
 
-	slog.Info("webhook configuration loaded",
+	slog.InfoContext(ctx, "webhook configuration loaded",
 		"version", version,
 		"listen", listenAddr,
 		"health_listen", healthAddr,
@@ -179,32 +180,32 @@ func main() {
 	)
 
 	go func() {
-		slog.Info("starting chur-webhook admission",
+		slog.InfoContext(ctx, "starting chur-webhook admission",
 			"version", version, "addr", httpSrv.Addr, "tls_mode", tlsMode)
 		if err := httpSrv.ListenAndServeTLS(certFile, keyFile); err != nil && err != http.ErrServerClosed {
-			slog.Error("admission server error", "error", err)
+			slog.ErrorContext(ctx, "admission server error", "error", err)
 			cancel()
 		}
 	}()
 
 	go func() {
-		slog.Info("starting chur-webhook health", "addr", healthSrv.Addr)
+		slog.InfoContext(ctx, "starting chur-webhook health", "addr", healthSrv.Addr)
 		if err := healthSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			slog.Error("health server error", "error", err)
+			slog.ErrorContext(ctx, "health server error", "error", err)
 			cancel()
 		}
 	}()
 
 	<-ctx.Done()
-	slog.Info("shutting down...")
+	slog.InfoContext(ctx, "shutting down...")
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer shutdownCancel()
 
 	if err := healthSrv.Shutdown(shutdownCtx); err != nil {
-		slog.Error("health server shutdown error", "error", err)
+		slog.ErrorContext(ctx, "health server shutdown error", "error", err)
 	}
 	if err := httpSrv.Shutdown(shutdownCtx); err != nil {
-		slog.Error("admission server shutdown error", "error", err)
+		slog.ErrorContext(ctx, "admission server shutdown error", "error", err)
 	}
 }

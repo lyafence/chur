@@ -30,5 +30,6 @@ webhooks:
     sideEffects: None
     admissionReviewVersions: ["v1"]
     timeoutSeconds: {{ .Values.webhook.timeoutSeconds }}
+    reinvocationPolicy: IfNeeded
     {{- include "chur.webhook.namespaceSelector" . | nindent 4 }}
 {{- end }}

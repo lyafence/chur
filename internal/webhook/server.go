@@ -1,6 +1,7 @@
 package webhook
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -45,7 +46,7 @@ func NewServer(cfg *Config) (*Server, error) {
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		slog.Warn("method not allowed", "method", r.Method, "path", r.URL.Path)
+		slog.WarnContext(r.Context(), "method not allowed", "method", r.Method, "path", r.URL.Path)
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
@@ -55,19 +56,19 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	select {
 	case s.sem <- struct{}{}:
 	case <-r.Context().Done():
-		slog.Warn("admission review rejected, server busy or request canceled")
+		slog.WarnContext(r.Context(), "admission review rejected, server busy or request canceled")
 		http.Error(w, "server busy or request canceled", http.StatusServiceUnavailable)
 		return
 	}
 	defer func() { <-s.sem }()
 
-	slog.Info("admission review received", "path", r.URL.Path)
+	slog.InfoContext(r.Context(), "admission review received", "path", r.URL.Path)
 
 	r.Body = http.MaxBytesReader(w, r.Body, 10*1024*1024)
 
 	var review admissionv1.AdmissionReview
 	if err := json.NewDecoder(r.Body).Decode(&review); err != nil {
-		slog.Warn("failed to decode admission review", "error", err)
+		slog.WarnContext(r.Context(), "failed to decode admission review", "error", err)
 		http.Error(w, fmt.Sprintf("failed to decode: %v", err), http.StatusBadRequest)
 		return
 	}
@@ -76,7 +77,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
-		slog.Error("failed to encode admission response", "error", err)
+		slog.ErrorContext(r.Context(), "failed to encode admission response", "error", err)
 	}
 }
 
@@ -102,7 +103,7 @@ func (s *Server) mutate(review *admissionv1.AdmissionReview) *admissionv1.Admiss
 	resp.Response = &admissionv1.AdmissionResponse{UID: review.Request.UID}
 
 	if !isPodRequest(review.Request.Kind) {
-		slog.Warn("invalid request kind", "kind", kindString(review.Request.Kind))
+		slog.WarnContext(context.Background(), "invalid request kind", "kind", kindString(review.Request.Kind))
 		resp.Response.Allowed = false
 		resp.Response.Result = &metav1.Status{
 			Code:    http.StatusBadRequest,
@@ -113,7 +114,7 @@ func (s *Server) mutate(review *admissionv1.AdmissionReview) *admissionv1.Admiss
 
 	pod := &corev1.Pod{}
 	if _, _, err := s.deserializer.Decode(review.Request.Object.Raw, nil, pod); err != nil {
-		slog.Warn("failed to decode pod", "error", err)
+		slog.WarnContext(context.Background(), "failed to decode pod", "error", err)
 		resp.Response.Allowed = false
 		resp.Response.Result = &metav1.Status{
 			Code:    http.StatusBadRequest,
@@ -127,10 +128,10 @@ func (s *Server) mutate(review *admissionv1.AdmissionReview) *admissionv1.Admiss
 		code := http.StatusInternalServerError
 		if errors.Is(err, ErrValidation) {
 			code = http.StatusBadRequest
-			slog.Warn("pod mutation validation failed",
+			slog.WarnContext(context.Background(), "pod mutation validation failed",
 				"pod", pod.Name, "namespace", pod.Namespace, "error", err)
 		} else {
-			slog.Error("failed to mutate pod",
+			slog.ErrorContext(context.Background(), "failed to mutate pod",
 				"pod", pod.Name, "namespace", pod.Namespace, "error", err)
 		}
 		resp.Response.Allowed = false
@@ -152,7 +153,7 @@ func (s *Server) mutate(review *admissionv1.AdmissionReview) *admissionv1.Admiss
 	// Dry-run: return Allowed without patches. Webhooks must not actuate
 	// side effects (init container creation, file writes) during dry-run.
 	if review.Request.DryRun != nil && *review.Request.DryRun {
-		slog.Info("dry-run request, skipping mutation",
+		slog.InfoContext(context.Background(), "dry-run request, skipping mutation",
 			"pod", pod.Name, "namespace", pod.Namespace, "provider", providerName)
 		resp.Response.Allowed = true
 		return resp
@@ -160,7 +161,7 @@ func (s *Server) mutate(review *admissionv1.AdmissionReview) *admissionv1.Admiss
 
 	patchBytes, err := json.Marshal(patch)
 	if err != nil {
-		slog.Error("failed to marshal patch", "error", err)
+		slog.ErrorContext(context.Background(), "failed to marshal patch", "error", err)
 		resp.Response.Allowed = false
 		resp.Response.Result = &metav1.Status{
 			Code:    http.StatusInternalServerError,
@@ -169,7 +170,7 @@ func (s *Server) mutate(review *admissionv1.AdmissionReview) *admissionv1.Admiss
 		return resp
 	}
 
-	slog.Info("pod mutated",
+	slog.InfoContext(context.Background(), "pod mutated",
 		"pod", pod.Name, "namespace", pod.Namespace, "provider", providerName)
 
 	pt := admissionv1.PatchTypeJSONPatch

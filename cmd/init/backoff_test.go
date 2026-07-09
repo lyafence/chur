@@ -9,7 +9,7 @@ import (
 	"github.com/lyafence/chur/internal/provider"
 )
 
-func failingFactory(ctx context.Context) (provider.SecretProvider, error) {
+func failingFactory(_ context.Context) (provider.SecretProvider, error) {
 	return nil, errors.New("temporary error")
 }
 
@@ -33,7 +33,7 @@ func TestBackoffFetch_RetriesExhausted(t *testing.T) {
 
 func TestBackoffFetch_SuccessOnFirstAttempt(t *testing.T) {
 	t.Parallel()
-	factory := func(ctx context.Context) (provider.SecretProvider, error) {
+	factory := func(_ context.Context) (provider.SecretProvider, error) {
 		return &mockProvider{value: []byte("ok")}, nil
 	}
 	secret, err := backoffFetch(context.Background(), factory, "test")
@@ -48,7 +48,7 @@ func TestBackoffFetch_SuccessOnFirstAttempt(t *testing.T) {
 func TestBackoffFetch_SuccessAfterRetries(t *testing.T) {
 	t.Parallel()
 	attempts := 0
-	factory := func(ctx context.Context) (provider.SecretProvider, error) {
+	factory := func(_ context.Context) (provider.SecretProvider, error) {
 		attempts++
 		if attempts < 3 {
 			return nil, errors.New("not ready yet")

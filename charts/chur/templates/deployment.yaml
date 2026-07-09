@@ -82,6 +82,8 @@ spec:
             allowPrivilegeEscalation: false
             capabilities:
               drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
           resources:
             {{- toYaml .Values.webhook.resources | nindent 12 }}
       {{- with .Values.webhook.securityContext }}
