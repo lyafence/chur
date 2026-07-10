@@ -116,6 +116,54 @@ pdb:
   # during voluntary disruptions.
   minAvailable: 1
 
+keeper:
+  # keeper.enabled controls whether the chur-keeper deployment and service are created.
+  enabled: false
+  # keeper.replicaCount is the number of keeper pod replicas.
+  replicaCount: 1
+  image:
+    # keeper.image.repository is the container image repository for chur-keeper.
+    repository: ghcr.io/lyafence/chur-keeper
+    # keeper.image.tag is the image tag. Defaults to Chart appVersion if empty.
+    tag: ""
+    # keeper.image.pullPolicy is the image pull policy.
+    pullPolicy: IfNotPresent
+  # keeper.tlsMode controls TLS mode: "self-signed" or "mtls".
+  tlsMode: self-signed
+  # keeper.backend is the secret storage backend ("filesystem").
+  backend: filesystem
+  volume:
+    # keeper.volume.hostPath is the hostPath volume for secret storage.
+    hostPath:
+      path: /var/lib/chur-keeper/secrets
+      type: DirectoryOrCreate
+  tls:
+    # keeper.tls.existingSecret is the name of an existing TLS Secret for the keeper.
+    # Required when tlsMode=mtls.
+    existingSecret: ""
+  mtls:
+    clientCA:
+      # keeper.mtls.clientCA.existingSecret is the name of a Secret containing the client CA.
+      existingSecret: ""
+      # keeper.mtls.clientCA.existingConfigMap is the name of a ConfigMap containing the client CA.
+      existingConfigMap: ""
+  clientTLS:
+    # keeper.clientTLS.existingSecret is the name of a Secret containing the client TLS cert.
+    existingSecret: ""
+  # keeper.extraVolumes is a list of extra volumes for the keeper pod.
+  extraVolumes: []
+  # keeper.extraVolumeMounts is a list of extra volume mounts for the keeper container.
+  extraVolumeMounts: []
+  # keeper.extraEnv is a list of extra environment variables for the keeper container.
+  extraEnv: []
+  service:
+    # keeper.service.type is the Kubernetes Service type.
+    type: ClusterIP
+    # keeper.service.port is the port the keeper gRPC service listens on.
+    port: 9443
+  # keeper.resources is the resource requests and limits for the keeper container.
+  resources: {}
+
 rbac:
   # rbac.create controls whether RBAC resources (SA, Role, RoleBinding) are created
   # for the chur-init init container.

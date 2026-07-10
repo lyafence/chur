@@ -121,3 +121,28 @@ func GenerateTLSCert(host string, certPath, keyPath string) error {
 
 	return nil
 }
+
+// ServerTLSConfig returns a *tls.Config loaded with a server certificate and
+// optional client certificate verification. clientCAPEM may be nil for self-signed mode.
+func ServerTLSConfig(clientCAPEM []byte, certFile, keyFile string) (*tls.Config, error) {
+	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+	if err != nil {
+		return nil, fmt.Errorf("load server keypair: %w", err)
+	}
+
+	cfg := &tls.Config{
+		MinVersion:   tls.VersionTLS13,
+		Certificates: []tls.Certificate{cert},
+	}
+
+	if len(clientCAPEM) > 0 {
+		pool := x509.NewCertPool()
+		if !pool.AppendCertsFromPEM(clientCAPEM) {
+			return nil, fmt.Errorf("failed to parse client CA certificate")
+		}
+		cfg.ClientAuth = tls.RequireAndVerifyClientCert
+		cfg.ClientCAs = pool
+	}
+
+	return cfg, nil
+}

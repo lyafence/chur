@@ -1,0 +1,18 @@
+{{- if .Values.keeper.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "chur.fullname" . }}-keeper
+  labels:
+    {{- include "chur.labels" . | nindent 4 }}
+    app.kubernetes.io/component: keeper
+spec:
+  type: {{ .Values.keeper.service.type }}
+  ports:
+    - port: {{ .Values.keeper.service.port }}
+      targetPort: keeper
+      name: keeper
+  selector:
+    {{- include "chur.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: keeper
+{{- end }}

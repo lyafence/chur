@@ -147,6 +147,33 @@ The application reads the secret from `/secrets/<ref>` (e.g. `/secrets/db-creden
 
 _Phase 1 providers are implemented and tested. Phase 2 providers are planned._
 
+## chur-keeper (optional)
+
+`chur-keeper` is an optional standalone HTTPS gateway that exposes secrets to
+`chur-init` via a single endpoint:
+
+- `POST /v1/secrets/get` — accepts `{"ref":"..."}`, returns raw secret bytes.
+
+Backends are selected via `CHUR_KEEPER_BACKEND`:
+
+| Backend | Variable | Description |
+|---------|----------|-------------|
+| `filesystem` | `CHUR_KEEPER_BACKEND=filesystem` | Reads secrets from files under `CHUR_KEEPER_BACKEND_FS_ROOT` |
+| `exec` | `CHUR_KEEPER_BACKEND=exec` | Executes `CHUR_KEEPER_EXEC_COMMAND ref` |
+
+To use it, annotate a Pod with `chur.io/provider: keeper` and set
+`chur.io/secret-ref` to the keeper ref. The webhook automatically injects
+`CHUR_KEEPER_URL` when keeper is enabled in Helm. Additional provider config can
+be supplied through annotations:
+
+| Annotation | Effect |
+|---|---|
+| `chur.io/keeper-skip-verify: "true"` | Injects `CHUR_KEEPER_SKIP_VERIFY=1` (dev only) |
+| `chur.io/provider-env: '{"CHUR_KEEPER_SERVER_CA":"/etc/chur-keeper/ca.crt"}'` | Injects arbitrary `CHUR_*` env vars into `chur-init` |
+
+In production, deploy keeper with mTLS and use `chur.io/provider-env` to point
+`chur-init` at mounted client certificates.
+
 ### Local provider in Kubernetes
 
 The `local` provider reads secret files from `CHUR_LOCAL_BASE_PATH`

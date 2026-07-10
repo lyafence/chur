@@ -108,6 +108,23 @@ Trust assumptions:
 - **Mitigation:** chur logs structured metadata only (provider, reference, path,
   bytes). Secret values are never logged.
 
+### T9: Secret leak or abuse via keeper backend
+
+- **Scenario:** `chur-keeper` reads secrets from arbitrary files or executes
+  arbitrary commands due to a malicious `ref`.
+- **Mitigation:** Keeper refs are validated to disallow traversal (`..`),
+  absolute paths, and control characters. The filesystem backend resolves the
+  path and verifies it remains under `CHUR_KEEPER_BACKEND_FS_ROOT`.
+- **Note:** Symlinks inside `CHUR_KEEPER_BACKEND_FS_ROOT` are followed by
+  `os.ReadFile`. A dangling symlink or a symlink pointing outside the root
+  will result in an error, but operators should ensure the root directory and
+  any symlinks within it are writable only by trusted principals.
+- **Note:** For the `exec` backend, `chur-keeper` passes `ref` as a single
+  isolated argument, which prevents shell injection. However, the target
+  executable or script is responsible for validating and sanitizing the
+  dynamic `ref` parameter to avoid downstream directory traversal,
+  command injection, or application-level exploits.
+
 ## Non-Goals
 
 The following are intentionally out of scope for v0.2:
@@ -118,6 +135,7 @@ The following are intentionally out of scope for v0.2:
 - A custom authorization model or policy engine.
 - Advanced audit capabilities beyond structured JSON logs.
 - Control-plane components, CRDs, or controllers.
+- Automated mTLS certificate rotation for `chur-keeper`.
 
 ## Basic Audit
 

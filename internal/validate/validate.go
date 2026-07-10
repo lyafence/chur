@@ -95,3 +95,28 @@ func ValidateMountPath(path string) error {
 func isAllowedMountRune(r rune) bool {
 	return unicode.IsLetter(r) || unicode.IsDigit(r) || r == '/' || r == '-' || r == '_' || r == '.'
 }
+
+// ValidateKeeperRef validates a ref used by the keeper provider.
+// It allows hierarchical names with '/' but forbids traversal and absolute paths.
+func ValidateKeeperRef(ref string) error {
+	if ref == "" {
+		return fmt.Errorf("keeper ref must not be empty")
+	}
+	if len(ref) > 4096 {
+		return fmt.Errorf("keeper ref exceeds 4096 characters")
+	}
+	if ref[0] == '/' {
+		return fmt.Errorf("keeper ref must not be an absolute path")
+	}
+	if strings.Contains(ref, "..") {
+		return fmt.Errorf("keeper ref must not contain '..'")
+	}
+
+	const allowed = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._/-"
+	for i, r := range ref {
+		if !strings.ContainsRune(allowed, r) {
+			return fmt.Errorf("keeper ref contains invalid character %q at position %d", r, i)
+		}
+	}
+	return nil
+}

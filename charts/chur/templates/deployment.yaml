@@ -52,6 +52,14 @@ spec:
             - name: CHUR_CLIENT_CA_PATH
               value: "{{ .Values.webhook.clientCAPath }}"
           {{- end }}
+          {{- if .Values.keeper.enabled }}
+            - name: CHUR_KEEPER_SERVICE_NAME
+              value: "{{ include "chur.fullname" . }}-keeper"
+            - name: CHUR_KEEPER_SERVICE_NAMESPACE
+              value: "{{ .Release.Namespace }}"
+            - name: CHUR_KEEPER_SERVICE_PORT
+              value: "{{ .Values.keeper.service.port }}"
+          {{- end }}
           volumeMounts:
             - name: tls
               mountPath: /etc/chur/tls

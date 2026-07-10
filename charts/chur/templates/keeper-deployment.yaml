@@ -1,0 +1,117 @@
+{{- if .Values.keeper.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "chur.fullname" . }}-keeper
+  labels:
+    {{- include "chur.labels" . | nindent 4 }}
+    app.kubernetes.io/component: keeper
+spec:
+  replicas: {{ .Values.keeper.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "chur.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: keeper
+  template:
+    metadata:
+      labels:
+        {{- include "chur.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: keeper
+    spec:
+      containers:
+        - name: keeper
+          image: "{{ .Values.keeper.image.repository }}:{{ .Values.keeper.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.keeper.image.pullPolicy }}
+          command: ["/chur-keeper"]
+          ports:
+            - containerPort: 9443
+              name: keeper
+            - containerPort: 9444
+              name: health
+          env:
+            - name: CHUR_KEEPER_LISTEN
+              value: ":9443"
+            - name: CHUR_KEEPER_HEALTH_LISTEN
+              value: ":9444"
+            - name: CHUR_KEEPER_TLS_DNS_NAME
+              value: "{{ include "chur.fullname" . }}-keeper.{{ .Release.Namespace }}.svc"
+            - name: CHUR_KEEPER_TLS_MODE
+              value: {{ .Values.keeper.tlsMode | quote }}
+            - name: CHUR_KEEPER_BACKEND
+              value: {{ .Values.keeper.backend | quote }}
+            - name: CHUR_KEEPER_MAX_SECRET_SIZE
+              value: "1Mi"
+          {{- if eq .Values.keeper.tlsMode "mtls" }}
+            - name: CHUR_KEEPER_TLS_CERT
+              value: "/etc/chur-keeper/tls/tls.crt"
+            - name: CHUR_KEEPER_TLS_KEY
+              value: "/etc/chur-keeper/tls/tls.key"
+          {{- end }}
+          {{- if and (eq .Values.keeper.tlsMode "mtls") .Values.keeper.mtls.clientCA.existingSecret }}
+            - name: CHUR_KEEPER_TLS_CLIENT_CA
+              value: "/etc/chur-keeper/client-ca/ca.crt"
+          {{- end }}
+          {{- with .Values.keeper.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: secrets
+              mountPath: /var/lib/chur-keeper/secrets
+              readOnly: true
+          {{- if eq .Values.keeper.tlsMode "mtls" }}
+            - name: tls
+              mountPath: /etc/chur-keeper/tls
+              readOnly: true
+          {{- end }}
+          {{- if and (eq .Values.keeper.tlsMode "mtls") .Values.keeper.mtls.clientCA.existingSecret }}
+            - name: client-ca
+              mountPath: /etc/chur-keeper/client-ca
+              readOnly: true
+          {{- end }}
+          {{- with .Values.keeper.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: health
+              scheme: HTTP
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: health
+              scheme: HTTP
+            initialDelaySeconds: 1
+            periodSeconds: 3
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+          resources:
+            {{- toYaml .Values.keeper.resources | nindent 12 }}
+      volumes:
+        - name: secrets
+          {{- toYaml .Values.keeper.volume | nindent 10 }}
+      {{- if eq .Values.keeper.tlsMode "mtls" }}
+        - name: tls
+          secret:
+            secretName: {{ .Values.keeper.tls.existingSecret }}
+            defaultMode: 0444
+      {{- end }}
+      {{- if and (eq .Values.keeper.tlsMode "mtls") .Values.keeper.mtls.clientCA.existingSecret }}
+        - name: client-ca
+          secret:
+            secretName: {{ .Values.keeper.mtls.clientCA.existingSecret }}
+            defaultMode: 0444
+      {{- end }}
+      {{- with .Values.keeper.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

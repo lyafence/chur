@@ -12,6 +12,7 @@ import (
 
 	"github.com/lyafence/chur/internal/provider"
 	_ "github.com/lyafence/chur/internal/providers/env"
+	_ "github.com/lyafence/chur/internal/providers/keeper"
 	_ "github.com/lyafence/chur/internal/providers/local"
 	"github.com/lyafence/chur/internal/validate"
 )

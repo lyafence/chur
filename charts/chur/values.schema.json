@@ -317,6 +317,165 @@
           "description": "ServiceAccount name for init containers"
         }
       }
+    },
+    "keeper": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Whether the chur-keeper deployment and service are created"
+        },
+        "replicaCount": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of keeper pod replicas"
+        },
+        "image": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "repository": {
+              "type": "string",
+              "description": "Container image repository for chur-keeper"
+            },
+            "tag": {
+              "type": "string",
+              "description": "Image tag. Defaults to Chart appVersion if empty"
+            },
+            "pullPolicy": {
+              "type": "string",
+              "enum": ["IfNotPresent", "Always", "Never"],
+              "description": "Image pull policy"
+            }
+          }
+        },
+        "tlsMode": {
+          "type": "string",
+          "enum": ["self-signed", "mtls"],
+          "description": "TLS mode for the keeper"
+        },
+        "backend": {
+          "type": "string",
+          "description": "Secret storage backend"
+        },
+        "volume": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "hostPath": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "description": "Host path for secret storage"
+                },
+                "type": {
+                  "type": "string",
+                  "description": "Host path type"
+                }
+              }
+            }
+          }
+        },
+        "tls": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "existingSecret": {
+              "type": "string",
+              "description": "Name of an existing TLS Secret for the keeper (mtls only)"
+            }
+          }
+        },
+        "mtls": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "clientCA": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "existingSecret": {
+                  "type": "string",
+                  "description": "Name of a Secret containing the client CA"
+                },
+                "existingConfigMap": {
+                  "type": "string",
+                  "description": "Name of a ConfigMap containing the client CA"
+                }
+              }
+            }
+          }
+        },
+        "clientTLS": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "existingSecret": {
+              "type": "string",
+              "description": "Name of a Secret containing the client TLS cert"
+            }
+          }
+        },
+        "extraVolumes": {
+          "type": "array",
+          "items": { "type": "object" },
+          "description": "Extra volumes for the keeper pod"
+        },
+        "extraVolumeMounts": {
+          "type": "array",
+          "items": { "type": "object" },
+          "description": "Extra volume mounts for the keeper container"
+        },
+        "extraEnv": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string" },
+              "value": { "type": "string" }
+            },
+            "required": ["name"]
+          },
+          "description": "Extra environment variables for the keeper container"
+        },
+        "service": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": ["ClusterIP", "NodePort", "LoadBalancer", "ExternalName"],
+              "description": "Kubernetes Service type"
+            },
+            "port": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535,
+              "description": "Port that the keeper gRPC service listens on"
+            }
+          }
+        },
+        "resources": {
+          "type": "object",
+          "description": "Resource requests and limits for the keeper container",
+          "properties": {
+            "requests": {
+              "type": "object",
+              "description": "Resource requests (cpu, memory, etc.)",
+              "additionalProperties": { "type": "string" }
+            },
+            "limits": {
+              "type": "object",
+              "description": "Resource limits (cpu, memory, etc.)",
+              "additionalProperties": { "type": "string" }
+            }
+          }
+        }
+      }
     }
   }
 }

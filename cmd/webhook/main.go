@@ -13,6 +13,9 @@ import (
 
 	"k8s.io/apimachinery/pkg/api/resource"
 
+	_ "github.com/lyafence/chur/internal/providers/env"
+	_ "github.com/lyafence/chur/internal/providers/keeper"
+	_ "github.com/lyafence/chur/internal/providers/local"
 	"github.com/lyafence/chur/internal/webhook"
 )
 
@@ -65,6 +68,10 @@ func main() {
 		}
 		cfg.MaxConcurrent = n
 	}
+
+	cfg.KeeperServiceName = os.Getenv("CHUR_KEEPER_SERVICE_NAME")
+	cfg.KeeperServiceNamespace = firstNonEmpty(os.Getenv("CHUR_KEEPER_SERVICE_NAMESPACE"), "chur")
+	cfg.KeeperServicePort = firstNonEmpty(os.Getenv("CHUR_KEEPER_SERVICE_PORT"), "9443")
 
 	srv, err := webhook.NewServer(cfg)
 	if err != nil {
@@ -208,4 +215,11 @@ func main() {
 	if err := httpSrv.Shutdown(shutdownCtx); err != nil {
 		slog.ErrorContext(ctx, "admission server shutdown error", "error", err)
 	}
+}
+
+func firstNonEmpty(a, b string) string {
+	if a != "" {
+		return a
+	}
+	return b
 }

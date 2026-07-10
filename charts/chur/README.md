@@ -64,6 +64,36 @@ spec:
   serviceAccountName: chur-init
 ```
 
+## Keeper (optional)
+
+The `keeper` section controls the optional `chur-keeper` deployment:
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `keeper.enabled` | `false` | Enable the chur-keeper deployment and service |
+| `keeper.replicaCount` | `1` | Number of keeper pod replicas |
+| `keeper.image.repository` | `ghcr.io/lyafence/chur-keeper` | Keeper image repository |
+| `keeper.image.tag` | Chart `appVersion` | Keeper image tag |
+| `keeper.image.pullPolicy` | `IfNotPresent` | Keeper image pull policy |
+| `keeper.tlsMode` | `self-signed` | TLS mode: `self-signed` or `mtls` |
+| `keeper.backend` | `filesystem` | Secret storage backend: `filesystem` or `exec` |
+| `keeper.volume.hostPath.path` | `/var/lib/chur-keeper/secrets` | Host path for filesystem backend |
+| `keeper.volume.hostPath.type` | `DirectoryOrCreate` | Host path type |
+| `keeper.tls.existingSecret` | `""` | Existing TLS Secret name (required for `mtls`) |
+| `keeper.mtls.clientCA.existingSecret` | `""` | Existing Secret with mTLS client CA |
+| `keeper.mtls.clientCA.existingConfigMap` | `""` | Existing ConfigMap with mTLS client CA |
+| `keeper.clientTLS.existingSecret` | `""` | Existing Secret with client TLS cert for chur-init |
+| `keeper.service.type` | `ClusterIP` | Keeper service type |
+| `keeper.service.port` | `9443` | Keeper service HTTPS port |
+| `keeper.extraVolumes` | `[]` | Extra volumes for the keeper pod |
+| `keeper.extraVolumeMounts` | `[]` | Extra volume mounts for the keeper container |
+| `keeper.extraEnv` | `[]` | Extra env vars for the keeper container |
+| `keeper.resources` | `{}` | Keeper container resource limits |
+
+When `keeper.enabled=true`, the webhook automatically injects `CHUR_KEEPER_URL`
+into every `chur-init` container. Use `chur.io/provider: keeper` in your Pod
+annotations to route secret fetching through the keeper.
+
 ## Values
 
 See `values.yaml` for the full list of configurable parameters.

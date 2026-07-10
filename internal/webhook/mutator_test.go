@@ -455,6 +455,99 @@ func TestMutatePod_AllowedNamespaces(t *testing.T) {
 	}
 }
 
+func toJSON(t *testing.T, v interface{}) []byte {
+	t.Helper()
+	b, err := json.Marshal(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
+func TestMutatePodKeeperEnvInjection(t *testing.T) {
+	t.Parallel()
+	cfg := &Config{
+		VolumeSizeLimit:        resource.MustParse("10Mi"),
+		InitImage:              "chur-init:latest",
+		MaxSecretSize:          "1Mi",
+		LocalBasePath:          "/etc/chur/secrets",
+		KeeperServiceName:      "chur-keeper",
+		KeeperServiceNamespace: "chur",
+		KeeperServicePort:      "9443",
+	}
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test",
+			Namespace: "default",
+			Annotations: map[string]string{
+				annotationProvider:         "keeper",
+				annotationSecret:           "prod/db/password",
+				annotationKeeperSkipVerify: "true",
+				annotationProviderEnv:      `{"CHUR_KEEPER_SERVER_CA":"/etc/chur-keeper/ca.crt"}`,
+			},
+		},
+	}
+
+	patches, err := MutatePod(pod, cfg)
+	if err != nil {
+		t.Fatalf("mutate: %v", err)
+	}
+
+	var found bool
+	for _, p := range patches {
+		if p.Path == "/spec/initContainers" {
+			found = true
+			var containers []corev1.Container
+			if err := json.Unmarshal(toJSON(t, p.Value), &containers); err != nil {
+				t.Fatal(err)
+			}
+			if len(containers) != 1 {
+				t.Fatalf("expected 1 init container, got %d", len(containers))
+			}
+			env := map[string]string{}
+			for _, e := range containers[0].Env {
+				env[e.Name] = e.Value
+			}
+			if got, want := env["CHUR_KEEPER_URL"], "https://chur-keeper.chur.svc:9443"; got != want {
+				t.Errorf("CHUR_KEEPER_URL = %q, want %q", got, want)
+			}
+			if got, want := env["CHUR_KEEPER_SKIP_VERIFY"], "1"; got != want {
+				t.Errorf("CHUR_KEEPER_SKIP_VERIFY = %q, want %q", got, want)
+			}
+			if got, want := env["CHUR_KEEPER_SERVER_CA"], "/etc/chur-keeper/ca.crt"; got != want {
+				t.Errorf("CHUR_KEEPER_SERVER_CA = %q, want %q", got, want)
+			}
+		}
+	}
+	if !found {
+		t.Error("expected initContainers patch")
+	}
+}
+
+func TestMutatePodProviderEnvInvalidKey(t *testing.T) {
+	t.Parallel()
+	cfg := &Config{
+		VolumeSizeLimit: resource.MustParse("10Mi"),
+		InitImage:       "chur-init:latest",
+		MaxSecretSize:   "1Mi",
+		LocalBasePath:   "/etc/chur/secrets",
+	}
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test",
+			Namespace: "default",
+			Annotations: map[string]string{
+				annotationProvider:    "keeper",
+				annotationSecret:      "prod/db/password",
+				annotationProviderEnv: `{"BAD_KEY":"value"}`,
+			},
+		},
+	}
+	if _, err := MutatePod(pod, cfg); err == nil {
+		t.Error("expected error for invalid provider-env key")
+	}
+}
+
 func TestMutatePod_CustomInitImage(t *testing.T) {
 	t.Parallel()
 	pod := podWithAnnotations(map[string]string{

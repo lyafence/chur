@@ -1,8 +1,11 @@
 package webhook
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
+	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -17,10 +20,12 @@ import (
 var ErrValidation = errors.New("validation error")
 
 const (
-	annotationProvider  = "chur.io/provider"
-	annotationSecret    = "chur.io/secret-ref" //nolint:gosec // annotation key, not a credential
-	annotationSecretKey = "chur.io/secret-key" //nolint:gosec // annotation key, not a credential
-	annotationMount     = "chur.io/mount-path"
+	annotationProvider         = "chur.io/provider"
+	annotationSecret           = "chur.io/secret-ref" //nolint:gosec // annotation key, not a credential
+	annotationSecretKey        = "chur.io/secret-key" //nolint:gosec // annotation key, not a credential
+	annotationMount            = "chur.io/mount-path"
+	annotationKeeperSkipVerify = "chur.io/keeper-skip-verify"
+	annotationProviderEnv      = "chur.io/provider-env"
 
 	opAdd                    = "add"
 	defaultChurFSGroup int64 = 1001
@@ -35,23 +40,77 @@ type PatchOperation struct {
 
 // Config holds the mutable configuration for the webhook mutator.
 type Config struct {
-	VolumeSizeLimit   resource.Quantity
-	AllowedNamespaces []string
-	InitImage         string
-	MaxSecretSize     string
-	LocalBasePath     string
-	MaxConcurrent     int
+	VolumeSizeLimit        resource.Quantity
+	AllowedNamespaces      []string
+	InitImage              string
+	MaxSecretSize          string
+	LocalBasePath          string
+	MaxConcurrent          int
+	KeeperServiceName      string
+	KeeperServiceNamespace string
+	KeeperServicePort      string
 }
 
 // DefaultConfig returns a Config with safe defaults.
 func DefaultConfig() *Config {
 	return &Config{
-		VolumeSizeLimit: resource.MustParse("10Mi"),
-		InitImage:       "ghcr.io/lyafence/chur-init:latest",
-		MaxSecretSize:   "1Mi",
-		LocalBasePath:   "/etc/chur/secrets",
-		MaxConcurrent:   100,
+		VolumeSizeLimit:        resource.MustParse("10Mi"),
+		InitImage:              "ghcr.io/lyafence/chur-init:latest",
+		MaxSecretSize:          "1Mi",
+		LocalBasePath:          "/etc/chur/secrets",
+		MaxConcurrent:          100,
+		KeeperServiceNamespace: "chur",
+		KeeperServicePort:      "9443",
 	}
+}
+
+// reservedInitEnv lists keys that the webhook manages itself and that must
+// not be overridden via chur.io/provider-env.
+var reservedInitEnv = map[string]bool{
+	"CHUR_PROVIDER":        true,
+	"CHUR_SECRET_REF":      true,
+	"CHUR_SECRET_KEY":      true,
+	"CHUR_MOUNT_PATH":      true,
+	"CHUR_MAX_SECRET_SIZE": true,
+	"CHUR_LOCAL_BASE_PATH": true,
+	"CHUR_KEEPER_URL":      true,
+}
+
+func validProviderEnvKey(k string) bool {
+	if len(k) == 0 || len(k) > 128 {
+		return false
+	}
+	for _, r := range k {
+		if r != '_' && (r < 'A' || r > 'Z') && (r < '0' || r > '9') {
+			return false
+		}
+	}
+	return strings.HasPrefix(k, "CHUR_")
+}
+
+// parseProviderEnv parses the chur.io/provider-env annotation. It returns
+// sorted env vars so patch output is deterministic.
+func parseProviderEnv(annotation string) ([]corev1.EnvVar, error) {
+	if annotation == "" {
+		return nil, nil
+	}
+	var extra map[string]string
+	if err := json.Unmarshal([]byte(annotation), &extra); err != nil {
+		return nil, fmt.Errorf("%w: invalid %s: %w", ErrValidation, annotationProviderEnv, err)
+	}
+
+	var envs []corev1.EnvVar
+	for k, v := range extra {
+		if !validProviderEnvKey(k) {
+			return nil, fmt.Errorf("%w: invalid key %q in %s", ErrValidation, k, annotationProviderEnv)
+		}
+		if reservedInitEnv[k] {
+			return nil, fmt.Errorf("%w: reserved key %q in %s", ErrValidation, k, annotationProviderEnv)
+		}
+		envs = append(envs, corev1.EnvVar{Name: k, Value: v})
+	}
+	sort.Slice(envs, func(i, j int) bool { return envs[i].Name < envs[j].Name })
+	return envs, nil
 }
 
 // MutatePod adds a tmpfs volume and init container to the pod spec when the
@@ -90,7 +149,11 @@ func MutatePod(pod *corev1.Pod, cfg *Config) ([]PatchOperation, error) {
 	}
 
 	secretRef := pod.Annotations[annotationSecret]
-	if err := validate.ValidateSecretRef(secretRef); err != nil {
+	validator := validate.ValidateSecretRef
+	if providerName == "keeper" {
+		validator = validate.ValidateKeeperRef
+	}
+	if err := validator(secretRef); err != nil {
 		return nil, fmt.Errorf("%w: invalid %s: %w", ErrValidation, annotationSecret, err)
 	}
 
@@ -175,6 +238,21 @@ func MutatePod(pod *corev1.Pod, cfg *Config) ([]PatchOperation, error) {
 	}
 	if secretKey != "" {
 		initEnv = append(initEnv, corev1.EnvVar{Name: "CHUR_SECRET_KEY", Value: secretKey})
+	}
+
+	if providerName == "keeper" {
+		if cfg.KeeperServiceName != "" {
+			url := fmt.Sprintf("https://%s.%s.svc:%s", cfg.KeeperServiceName, cfg.KeeperServiceNamespace, cfg.KeeperServicePort)
+			initEnv = append(initEnv, corev1.EnvVar{Name: "CHUR_KEEPER_URL", Value: url})
+		}
+		if pod.Annotations[annotationKeeperSkipVerify] == "true" {
+			initEnv = append(initEnv, corev1.EnvVar{Name: "CHUR_KEEPER_SKIP_VERIFY", Value: "1"})
+		}
+		extraEnv, err := parseProviderEnv(pod.Annotations[annotationProviderEnv])
+		if err != nil {
+			return nil, err
+		}
+		initEnv = append(initEnv, extraEnv...)
 	}
 
 	// The local provider reads files from the node filesystem. Mount the base

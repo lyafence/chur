@@ -4,9 +4,10 @@
 
 | Command | Description |
 |---------|-------------|
-| `make build` | Build both binaries (webhook + init) |
-| `make build-webhook` | Build chur-webhook only |
+| `make build` | Build all binaries (webhook + init + keeper) |
+| `make build-keeper` | Build chur-keeper only |
 | `make build-init` | Build chur-init only |
+| `make build-webhook` | Build chur-webhook only |
 | `make fmt` | Format Go sources |
 | `make lint` | Run golangci-lint |
 | `make test` | Run tests |
@@ -16,6 +17,7 @@
 | `make docker` | Build all Docker images |
 | `make docker-webhook` | Build webhook image |
 | `make docker-init` | Build init image |
+| `make docker-keeper` | Build keeper image |
 | `make e2e` | End-to-end tests (Kind → deploy → verify). Set `E2E_SKIP_CLEANUP=true` to keep the Kind cluster. |
 | `make release` | Build native binary tarball (local/CI quick release) |
 | `make helm-package` | Package the Helm chart into `dist/` |
@@ -26,12 +28,18 @@
 |-----------|---------------|
 | `cmd/webhook/` | Webhook entrypoint (HTTP server, TLS) |
 | `cmd/init/` | Init container entrypoint (secret fetching) |
+| `cmd/keeper/` | Keeper entrypoint (HTTP server, TLS, backend dispatch) |
 | `internal/webhook/` | Admission review handling, pod mutation, TLS |
 | `internal/provider/` | SecretProvider interface + Factory registry |
 | `internal/providers/env/` | Environment variable provider |
 | `internal/providers/local/` | Local file provider (bare-metal) |
 | `internal/providers/k8s/` | Kubernetes Secret provider |
 | `internal/validate/` | Input validation (filename-safe refs, secret keys) |
+| `internal/keeper/` | Keeper server, config, backend interface |
+| `internal/keeper/filesystem/` | Filesystem backend for chur-keeper |
+| `internal/keeper/exec/` | Exec backend for chur-keeper |
+| `internal/keeper/bytesize/` | Byte-size parsing utility for chur-keeper |
+| `internal/providers/keeper/` | Keeper HTTP provider for chur-init |
 | `test/e2e/` | End-to-end tests |
 | `charts/chur/` | Helm chart for deploying the webhook |
 
@@ -56,6 +64,11 @@ chur-init runs first
        ├── Read CHUR_PROVIDER from env
        ├── Factory.Get(provider) → lazy init
        ├── SecretProvider.GetSecret(ref) → []byte
+       │      │
+       │      └── (if keeper provider) ──► chur-keeper (optional)
+       │                                    │
+       │                                    ├── filesystem backend
+       │                                    └── exec backend
        └── Write to tmpfs mount
        
 App container runs

@@ -80,6 +80,31 @@ func TestValidateMountPath(t *testing.T) {
 	}
 }
 
+func TestValidateKeeperRef(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		ref   string
+		valid bool
+	}{
+		{"prod/db/password", true},
+		{"simple", true},
+		{"", false},
+		{"/absolute", false},
+		{"../etc/passwd", false},
+		{"a\\b", false},
+		{"a\x00b", false},
+	}
+	for _, tc := range tests {
+		err := ValidateKeeperRef(tc.ref)
+		if tc.valid && err != nil {
+			t.Errorf("ValidateKeeperRef(%q) unexpected error: %v", tc.ref, err)
+		}
+		if !tc.valid && err == nil {
+			t.Errorf("ValidateKeeperRef(%q) expected error", tc.ref)
+		}
+	}
+}
+
 func TestValidateSecretKey(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
