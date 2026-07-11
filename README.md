@@ -25,12 +25,16 @@ Multi-platform images are published to GitHub Container Registry:
 |-------|---------|
 | `ghcr.io/lyafence/chur-webhook` | Admission webhook server |
 | `ghcr.io/lyafence/chur-init` | Init container for secret injection |
+| `ghcr.io/lyafence/chur-keeper` | Optional HTTPS secret gateway |
 
 Supported platforms: `linux/amd64`, `linux/arm64`
 
 ## Documentation
 
-For architecture details, provider configuration, mTLS, RBAC, and advanced examples, see the [main repository](https://github.com/lyafence/chur).
+- [Project README](https://github.com/lyafence/chur#readme) — architecture, providers, security model
+- [Chart README](https://github.com/lyafence/chur/blob/main/charts/chur/README.md) — Helm installation, TLS modes, configuration
+- [Configuration reference](https://github.com/lyafence/chur/blob/main/.env.example) — all environment variables
+- [Helm values](https://github.com/lyafence/chur/blob/main/charts/chur/values.yaml) — chart values with defaults and descriptions
 
 ## License
 
