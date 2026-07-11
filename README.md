@@ -154,7 +154,7 @@ The application reads the secret from `/secrets/<ref>` (e.g. `/secrets/db-creden
 | `chur.io/secret-ref` | Reference to the secret (env var, file name, k8s Secret name, or keeper path like `prod/db/password`) | Yes |
 | `chur.io/secret-key` | Key within the Kubernetes Secret's data map (used by the `k8s` provider) | No |
 | `chur.io/mount-path` | Path to mount the tmpfs volume (default: `/secrets`) | No |
-| `chur.io/keeper-skip-verify` | Skip TLS verification when calling `chur-keeper` (dev only, `"true"`) | No |
+| `chur.io/keeper-skip-verify` | Skip TLS verification when calling `chur-keeper` (dev only, `"1"` or `"true"`) | No |
 | `chur.io/provider-env` | Extra `CHUR_*` env vars for chur-init, JSON format: `{"KEY":"VAL"}` | No |
 
 ## Providers
@@ -190,7 +190,7 @@ be supplied through annotations:
 
 | Annotation | Effect |
 |---|---|
-| `chur.io/keeper-skip-verify: "true"` | Injects `CHUR_KEEPER_SKIP_VERIFY=1` (dev only) |
+| `chur.io/keeper-skip-verify: "1"` or `"true"` | Injects `CHUR_KEEPER_SKIP_VERIFY=1` (dev only) |
 | `chur.io/provider-env: '{"CHUR_KEEPER_SERVER_CA":"/etc/chur-keeper/ca.crt"}'` | Injects arbitrary `CHUR_*` env vars into `chur-init` |
 
 In production, deploy keeper with mTLS and use `chur.io/provider-env` to point
@@ -245,7 +245,7 @@ init container configuration), see [`.env.example`](.env.example).
 | `CHUR_MAX_CONCURRENT` | `100` | webhook | Max concurrent admission reviews |
 | `CHUR_PROVIDER` | `env` | init | Secret provider name |
 | `CHUR_MAX_SECRET_SIZE` | `1Mi` | init | Max secret size |
-| `CHUR_KEEPER_URL` | `https://chur-keeper:9443` | init | Keeper service URL (auto-injected) |
+| `CHUR_KEEPER_URL` | `https://chur-keeper.chur-system.svc:9443` | init | Keeper service URL (auto-injected) |
 | `CHUR_KEEPER_LISTEN` | `:9443` | keeper | HTTPS listen address |
 | `CHUR_KEEPER_HEALTH_LISTEN` | `:9444` | keeper | Health endpoint listen address |
 | `CHUR_KEEPER_TLS_MODE` | `self-signed` | keeper | TLS mode: `self-signed` or `mtls` |

@@ -6,7 +6,7 @@ development and CI only. For production, install cert-manager and set tls.provid
 
 ⚠️  On every `helm upgrade`, a new CA and certificate are generated, but the
    webhook pods are NOT automatically restarted. After upgrading, run:
-     kubectl rollout restart deployment/{{ include "chur.fullname" . }} -n {{ .Release.Namespace }}
+     kubectl rollout restart deployment/{{ include "chur.fullname" . }}-webhook -n {{ .Release.Namespace }}
 {{- else }}
 ℹ️  The webhook uses {{ .Values.tls.provider }} for TLS. Certificate rotation
    is handled {{ if eq .Values.tls.provider "certManager" }}by cert-manager{{ else }}by replacing the user-provided Secret{{ end }}.

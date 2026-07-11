@@ -91,4 +91,9 @@ jobs:
         env:
           CR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CR_RELEASE_NAME_TEMPLATE: "v{{ .Version }}"
-          CR_RELEASE_DESCRIPTION: ${{ env.CHANGELOG }}
+
+      - name: Update release body
+        if: env.CHANGELOG != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit ${{ github.ref_name }} --notes "$CHANGELOG"

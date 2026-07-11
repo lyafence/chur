@@ -111,7 +111,7 @@ func init() {
 			url = "https://chur-keeper.chur-system.svc:9443"
 		}
 		skipVerify := os.Getenv("CHUR_KEEPER_SKIP_VERIFY") == "1" || os.Getenv("CHUR_KEEPER_SKIP_VERIFY") == "true"
-		certFile := os.Getenv("CHUR_KEEPER_TLS_CERT")
+		certFile := os.Getenv("CHUR_KEEPER_TLS_CERT_PATH")
 		keyFile := os.Getenv("CHUR_KEEPER_TLS_KEY")
 		serverCAFile := os.Getenv("CHUR_KEEPER_SERVER_CA")
 		p, err := NewProvider(url, skipVerify, certFile, keyFile, serverCAFile)

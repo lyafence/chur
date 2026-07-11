@@ -2,7 +2,7 @@
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
-  name: {{ include "chur.fullname" . }}
+  name: {{ include "chur.fullname" . }}-webhook
   labels:
     {{- include "chur.labels" . | nindent 4 }}
 spec:

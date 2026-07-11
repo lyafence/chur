@@ -30,7 +30,8 @@
 | `cmd/webhook/` | Webhook entrypoint (HTTP server, TLS) |
 | `cmd/init/` | Init container entrypoint (secret fetching) |
 | `cmd/keeper/` | Keeper entrypoint (HTTP server, TLS, backend dispatch) |
-| `internal/webhook/` | Admission review handling, pod mutation, TLS |
+| `internal/webhook/` | Admission review handling, pod mutation |
+| `internal/tls/` | TLS certificate generation and server config |
 | `internal/provider/` | SecretProvider interface + Factory registry |
 | `internal/providers/env/` | Environment variable provider |
 | `internal/providers/local/` | Local file provider (bare-metal) |
@@ -180,14 +181,16 @@ Only if demonstrated demand:
 ## Architecture Overview
 
 ```
-Phase 1 ✅             Phase 2                Phase 3
-┌──────────────┐      ┌──────────────┐       ┌──────────────┐
-│  env         │      │  cloud       │       │  optional    │
-│  local       │      │  secret      │       │  runtime     │
-│  k8s         │ ───► │  stores      │ ───►  │  improvements│
-│  keeper      │      │  (via exec)  │       │  (only if    │
-│  webhook     │      │              │       │  demand)     │
-└──────────────┘      └──────────────┘       └──────────────┘
+Phase 1 ✅                     Phase 2 (only if demand)
+┌──────────────────────┐       ┌──────────────────────┐
+│  env                 │       │  optional runtime    │
+│  local               │       │  improvements        │
+│  k8s                 │ ───►  │  (Prometheus /       │
+│  keeper              │       │   hot-reload /       │
+│  webhook             │       │   audit logging)     │
+│  cloud secret stores │       │                      │
+│  (via exec backend)  │       │                      │
+└──────────────────────┘       └──────────────────────┘
 
 ## Release Workflow
 

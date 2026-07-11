@@ -12,8 +12,8 @@ import (
 )
 
 type FSBackend struct {
-	Root    string
-	MaxSize int64
+	root    string
+	maxSize int64
 }
 
 func (b *FSBackend) Name() string { return "filesystem" }
@@ -23,7 +23,7 @@ func (b *FSBackend) GetSecret(ctx context.Context, ref string) ([]byte, error) {
 		return nil, fmt.Errorf("filesystem: invalid ref: %w", err)
 	}
 
-	path := filepath.Join(b.Root, ref)
+	path := filepath.Join(b.root, ref)
 	fi, err := os.Lstat(path)
 	if err != nil {
 		return nil, fmt.Errorf("filesystem: stat %s: %w", path, err)
@@ -36,7 +36,7 @@ func (b *FSBackend) GetSecret(ctx context.Context, ref string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("filesystem: clean path: %w", err)
 	}
-	cleanRoot, err := filepath.Abs(filepath.Clean(b.Root))
+	cleanRoot, err := filepath.Abs(filepath.Clean(b.root))
 	if err != nil {
 		return nil, fmt.Errorf("filesystem: clean root: %w", err)
 	}
@@ -69,7 +69,7 @@ func (b *FSBackend) GetSecret(ctx context.Context, ref string) ([]byte, error) {
 	}
 	ch := make(chan readResult, 1)
 	go func() {
-		data, err := io.ReadAll(io.LimitReader(f, b.MaxSize+1))
+		data, err := io.ReadAll(io.LimitReader(f, b.maxSize+1))
 		ch <- readResult{data, err}
 	}()
 
@@ -80,7 +80,7 @@ func (b *FSBackend) GetSecret(ctx context.Context, ref string) ([]byte, error) {
 		if r.err != nil {
 			return nil, fmt.Errorf("filesystem: read %s: %w", cleanPath, r.err)
 		}
-		if int64(len(r.data)) > b.MaxSize {
+		if int64(len(r.data)) > b.maxSize {
 			return nil, fmt.Errorf("filesystem: secret exceeds max size")
 		}
 		return r.data, nil
@@ -88,9 +88,9 @@ func (b *FSBackend) GetSecret(ctx context.Context, ref string) ([]byte, error) {
 }
 
 func New(root string) *FSBackend {
-	return &FSBackend{Root: root}
+	return &FSBackend{root: root}
 }
 
 func NewWithMaxSize(root string, maxSize int64) *FSBackend {
-	return &FSBackend{Root: root, MaxSize: maxSize}
+	return &FSBackend{root: root, maxSize: maxSize}
 }

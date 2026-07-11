@@ -168,7 +168,7 @@ func main() {
 
 	if _, err := os.Stat(certFile); os.IsNotExist(err) {
 		if os.Getenv("CHUR_TLS_AUTO_GENERATE") == "1" {
-			dnsName := os.Getenv("CHUR_TLS_CERT_DNS_NAME")
+			dnsName := os.Getenv("CHUR_TLS_DNS_NAME")
 			if dnsName == "" {
 				dnsName = "localhost"
 			}

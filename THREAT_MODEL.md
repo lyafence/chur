@@ -83,9 +83,10 @@ Trust assumptions:
 
 - **Scenario:** The init container or app container runs as root and can read
   secrets belonging to other processes.
-- **Mitigation:** `chur-init` runs as non-root (`runAsUser: 1001`), with a
-  read-only root filesystem, dropped capabilities, and a shared fsGroup. The
-  secret file is written with mode `0640` so only the shared group can read it.
+- **Mitigation:** `chur-init` runs as non-root (configurable via
+  `CHUR_RUN_AS_USER`, `CHUR_RUN_AS_GROUP`, `CHUR_FS_GROUP`), with a read-only
+  root filesystem, dropped capabilities, and a shared fsGroup. The secret file
+  is written with mode `0640` so only the shared group can read it.
 
 ### T5: Secret exfiltration by a compromised app container
 
@@ -121,10 +122,11 @@ Trust assumptions:
 - **Mitigation:** Keeper refs are validated to disallow traversal (`..`),
   absolute paths, and control characters. The filesystem backend resolves the
   path and verifies it remains under `CHUR_KEEPER_BACKEND_FS_ROOT`.
-- **Note:** Symlinks inside `CHUR_KEEPER_BACKEND_FS_ROOT` are followed by
-  `os.ReadFile`. A dangling symlink or a symlink pointing outside the root
-  will result in an error, but operators should ensure the root directory and
-  any symlinks within it are writable only by trusted principals.
+- **Note:** Symlinks inside `CHUR_KEEPER_BACKEND_FS_ROOT` are rejected at the
+  filesystem level — both at open time (`os.Lstat`) and after open (`f.Stat` +
+  `os.SameFile`), closing the TOCTOU race window between path validation and
+  file read. Operators should still ensure the root directory is writable only
+  by trusted principals.
 - **Note:** For the `exec` backend, `chur-keeper` passes `ref` as a single
   isolated argument, which prevents shell injection. However, the target
   executable or script is responsible for validating and sanitizing the

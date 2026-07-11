@@ -58,13 +58,13 @@ func ConfigFromEnv() (*Config, error) {
 	case "self-signed", "":
 		cfg.TLSMode = TLSModeSelfSigned
 	}
-	if v := os.Getenv("CHUR_KEEPER_TLS_CERT"); v != "" {
+	if v := os.Getenv("CHUR_KEEPER_TLS_CERT_PATH"); v != "" {
 		cfg.TLSCertFile = v
 	}
 	if v := os.Getenv("CHUR_KEEPER_TLS_KEY"); v != "" {
 		cfg.TLSKeyFile = v
 	}
-	if v := os.Getenv("CHUR_KEEPER_TLS_CLIENT_CA"); v != "" {
+	if v := os.Getenv("CHUR_KEEPER_CLIENT_CA_PATH"); v != "" {
 		cfg.ClientCAFile = v
 	}
 	if v := os.Getenv("CHUR_KEEPER_BACKEND"); v != "" {

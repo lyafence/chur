@@ -228,10 +228,10 @@ func ServerTLSConfig(_ context.Context, cfg *Config) (*tls.Config, func() error,
 
 	case TLSModeMTLS:
 		if cfg.ClientCAFile == "" {
-			return nil, nil, fmt.Errorf("keeper: mtls mode requires CHUR_KEEPER_TLS_CLIENT_CA")
+			return nil, nil, fmt.Errorf("keeper: mtls mode requires CHUR_KEEPER_CLIENT_CA_PATH")
 		}
 		if cfg.TLSCertFile == "" || cfg.TLSKeyFile == "" {
-			return nil, nil, fmt.Errorf("keeper: mtls mode requires CHUR_KEEPER_TLS_CERT and CHUR_KEEPER_TLS_KEY")
+			return nil, nil, fmt.Errorf("keeper: mtls mode requires CHUR_KEEPER_TLS_CERT_PATH and CHUR_KEEPER_TLS_KEY")
 		}
 		clientCACert, err := os.ReadFile(cfg.ClientCAFile)
 		if err != nil {

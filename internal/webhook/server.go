@@ -19,7 +19,7 @@ type Server struct {
 	cfg          *Config
 	deserializer runtime.Decoder
 	sem          chan struct{}
-	mutateFn     func(*admissionv1.AdmissionReview) *admissionv1.AdmissionReview
+	mutateFn     func(context.Context, *admissionv1.AdmissionReview) *admissionv1.AdmissionReview
 }
 
 func NewServer(cfg *Config) (*Server, error) {
@@ -73,7 +73,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp := s.mutateFn(&review)
+	resp := s.mutateFn(r.Context(), &review)
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
@@ -81,7 +81,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Server) mutate(review *admissionv1.AdmissionReview) *admissionv1.AdmissionReview {
+func (s *Server) mutate(ctx context.Context, review *admissionv1.AdmissionReview) *admissionv1.AdmissionReview {
 	resp := &admissionv1.AdmissionReview{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "admission.k8s.io/v1",
@@ -103,7 +103,7 @@ func (s *Server) mutate(review *admissionv1.AdmissionReview) *admissionv1.Admiss
 	resp.Response = &admissionv1.AdmissionResponse{UID: review.Request.UID}
 
 	if !isPodRequest(review.Request.Kind) {
-		slog.WarnContext(context.Background(), "invalid request kind", "kind", kindString(review.Request.Kind))
+		slog.WarnContext(ctx, "invalid request kind", "kind", kindString(review.Request.Kind))
 		resp.Response.Allowed = false
 		resp.Response.Result = &metav1.Status{
 			Code:    http.StatusBadRequest,
@@ -114,7 +114,7 @@ func (s *Server) mutate(review *admissionv1.AdmissionReview) *admissionv1.Admiss
 
 	pod := &corev1.Pod{}
 	if _, _, err := s.deserializer.Decode(review.Request.Object.Raw, nil, pod); err != nil {
-		slog.WarnContext(context.Background(), "failed to decode pod", "error", err)
+		slog.WarnContext(ctx, "failed to decode pod", "error", err)
 		resp.Response.Allowed = false
 		resp.Response.Result = &metav1.Status{
 			Code:    http.StatusBadRequest,
@@ -128,10 +128,10 @@ func (s *Server) mutate(review *admissionv1.AdmissionReview) *admissionv1.Admiss
 		code := http.StatusInternalServerError
 		if errors.Is(err, ErrValidation) {
 			code = http.StatusBadRequest
-			slog.WarnContext(context.Background(), "pod mutation validation failed",
+			slog.WarnContext(ctx, "pod mutation validation failed",
 				"pod", pod.Name, "namespace", pod.Namespace, "error", err)
 		} else {
-			slog.ErrorContext(context.Background(), "failed to mutate pod",
+			slog.ErrorContext(ctx, "failed to mutate pod",
 				"pod", pod.Name, "namespace", pod.Namespace, "error", err)
 		}
 		resp.Response.Allowed = false
@@ -153,7 +153,7 @@ func (s *Server) mutate(review *admissionv1.AdmissionReview) *admissionv1.Admiss
 	// Dry-run: return Allowed without patches. Webhooks must not actuate
 	// side effects (init container creation, file writes) during dry-run.
 	if review.Request.DryRun != nil && *review.Request.DryRun {
-		slog.InfoContext(context.Background(), "dry-run request, skipping mutation",
+		slog.InfoContext(ctx, "dry-run request, skipping mutation",
 			"pod", pod.Name, "namespace", pod.Namespace, "provider", providerName)
 		resp.Response.Allowed = true
 		return resp
@@ -161,7 +161,7 @@ func (s *Server) mutate(review *admissionv1.AdmissionReview) *admissionv1.Admiss
 
 	patchBytes, err := json.Marshal(patch)
 	if err != nil {
-		slog.ErrorContext(context.Background(), "failed to marshal patch", "error", err)
+		slog.ErrorContext(ctx, "failed to marshal patch", "error", err)
 		resp.Response.Allowed = false
 		resp.Response.Result = &metav1.Status{
 			Code:    http.StatusInternalServerError,
@@ -170,7 +170,7 @@ func (s *Server) mutate(review *admissionv1.AdmissionReview) *admissionv1.Admiss
 		return resp
 	}
 
-	slog.InfoContext(context.Background(), "pod mutated",
+	slog.InfoContext(ctx, "pod mutated",
 		"pod", pod.Name, "namespace", pod.Namespace, "provider", providerName)
 
 	pt := admissionv1.PatchTypeJSONPatch

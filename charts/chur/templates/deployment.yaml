@@ -1,7 +1,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "chur.fullname" . }}
+  name: {{ include "chur.fullname" . }}-webhook
   labels:
     {{- include "chur.labels" . | nindent 4 }}
 spec:
@@ -45,9 +45,9 @@ spec:
             - name: CHUR_ALLOWED_NAMESPACES
               value: "{{ join "," .Values.webhook.allowedNamespaces }}"
             - name: CHUR_MAX_SECRET_SIZE
-              value: "{{ .Values.webhook.initMaxSecretSize }}"
+              value: "{{ .Values.webhook.maxSecretSize }}"
             - name: CHUR_LOCAL_BASE_PATH
-              value: "{{ .Values.webhook.initLocalBasePath }}"
+              value: "{{ .Values.webhook.localBasePath }}"
             - name: CHUR_MAX_CONCURRENT
               value: "{{ .Values.webhook.maxConcurrent }}"
           {{- if eq .Values.webhook.tlsMode "mtls" }}

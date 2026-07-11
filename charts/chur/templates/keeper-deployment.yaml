@@ -19,7 +19,7 @@ spec:
         app.kubernetes.io/component: keeper
     spec:
       containers:
-        - name: keeper
+        - name: chur-keeper
           image: "{{ .Values.keeper.image.repository }}:{{ .Values.keeper.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.keeper.image.pullPolicy }}
           command: ["/chur-keeper"]
@@ -54,17 +54,17 @@ spec:
               value: {{ .Values.keeper.execMaxStdout | default 1048576 | quote }}
           {{- end }}
           {{- if eq .Values.keeper.tlsMode "mtls" }}
-            - name: CHUR_KEEPER_TLS_CERT
+            - name: CHUR_KEEPER_TLS_CERT_PATH
               value: {{ .Values.keeper.tls.certPath | default "/etc/chur-keeper/tls/tls.crt" | quote }}
             - name: CHUR_KEEPER_TLS_KEY
               value: {{ .Values.keeper.tls.keyPath | default "/etc/chur-keeper/tls/tls.key" | quote }}
           {{- end }}
           {{- if or .Values.keeper.mtls.clientCA.existingSecret .Values.keeper.mtls.clientCA.existingConfigMap }}
-            - name: CHUR_KEEPER_TLS_CLIENT_CA
+            - name: CHUR_KEEPER_CLIENT_CA_PATH
               value: {{ .Values.keeper.mtls.clientCA.path | default "/etc/chur-keeper/client-ca/ca.crt" | quote }}
           {{- end }}
           {{- if and .Values.keeper.clientTLS.existingSecret (ne .Values.keeper.tlsMode "mtls") }}
-            - name: CHUR_KEEPER_TLS_CERT
+            - name: CHUR_KEEPER_TLS_CERT_PATH
               value: "/etc/chur-keeper/client-tls/tls.crt"
             - name: CHUR_KEEPER_TLS_KEY
               value: "/etc/chur-keeper/client-tls/tls.key"

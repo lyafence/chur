@@ -74,13 +74,24 @@ The `keeper` section controls the optional `chur-keeper` deployment:
 | `keeper.image.repository` | `ghcr.io/lyafence/chur-keeper` | Keeper image repository |
 | `keeper.image.tag` | Chart `appVersion` | Keeper image tag |
 | `keeper.image.pullPolicy` | `IfNotPresent` | Keeper image pull policy |
+| `keeper.listen` | `:9443` | Keeper HTTPS listen address |
+| `keeper.healthListen` | `:9444` | Keeper health probe listen address |
 | `keeper.tlsMode` | `self-signed` | TLS mode: `self-signed` or `mtls` |
 | `keeper.backend` | `filesystem` | Secret storage backend: `filesystem` or `exec` |
+| `keeper.maxSecretSize` | `"1Mi"` | Maximum secret response size |
+| `keeper.maxConcurrent` | `100` | Maximum concurrent HTTP requests |
+| `keeper.fsRoot` | `/var/lib/chur-keeper/secrets` | Root directory (filesystem backend) |
+| `keeper.execCommand` | `""` | Exec command (required when backend=exec) |
+| `keeper.execTimeout` | `10` | Exec command timeout in seconds |
+| `keeper.execMaxStdout` | `1048576` | Max stdout bytes for exec backend |
 | `keeper.volume.hostPath.path` | `/var/lib/chur-keeper/secrets` | Host path for filesystem backend |
 | `keeper.volume.hostPath.type` | `DirectoryOrCreate` | Host path type |
 | `keeper.tls.existingSecret` | `""` | Existing TLS Secret name (required for `mtls`) |
+| `keeper.tls.certPath` | `/etc/chur-keeper/tls/tls.crt` | TLS cert path inside keeper container |
+| `keeper.tls.keyPath` | `/etc/chur-keeper/tls/tls.key` | TLS key path inside keeper container |
 | `keeper.mtls.clientCA.existingSecret` | `""` | Existing Secret with CA bundle for verifying mTLS client certs |
 | `keeper.mtls.clientCA.existingConfigMap` | `""` | Alternative to existingSecret — ConfigMap with CA bundle |
+| `keeper.mtls.clientCA.path` | `/etc/chur-keeper/client-ca/ca.crt` | Client CA mount path inside keeper container |
 | `keeper.clientTLS.existingSecret` | `""` | Existing Secret (tls.crt + tls.key) for keeper's server TLS identity |
 | `keeper.service.type` | `ClusterIP` | Keeper service type |
 | `keeper.service.port` | `9443` | Keeper service HTTPS port |
@@ -97,7 +108,7 @@ Additional keeper annotations:
 
 | Annotation | Effect |
 |---|---|
-| `chur.io/keeper-skip-verify: "true"` | Injects `CHUR_KEEPER_SKIP_VERIFY=1` (dev, skips TLS verification) |
+| `chur.io/keeper-skip-verify: "1"` or `"true"` | Injects `CHUR_KEEPER_SKIP_VERIFY=1` (dev, skips TLS verification) |
 | `chur.io/provider-env: '{"CHUR_KEEPER_SERVER_CA":"/etc/chur-keeper/ca.crt"}'` | Injects arbitrary `CHUR_*` env vars into `chur-init` |
 
 Note: To provision client-side certificates for `chur-init`, mount a Secret via `extraVolumes` on the application Pod and configure paths through the `chur.io/provider-env` annotation:

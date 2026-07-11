@@ -31,14 +31,14 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 
 {{- define "chur.serviceAccountName" -}}
 {{- if .Values.serviceAccount.create }}
-{{- default (include "chur.fullname" .) .Values.serviceAccount.name }}
+{{- default (printf "%s-webhook" (include "chur.fullname" .)) .Values.serviceAccount.name }}
 {{- else }}
 {{- .Values.serviceAccount.name }}
 {{- end }}
 {{- end }}
 
 {{- define "chur.webhook.serviceName" -}}
-{{ include "chur.fullname" . }}.{{ .Release.Namespace }}.svc
+{{ printf "%s-webhook" (include "chur.fullname" .) }}.{{ .Release.Namespace }}.svc
 {{- end }}
 
 {{- define "chur.webhook.namespaceSelector" -}}

@@ -134,11 +134,11 @@
           "type": "string",
           "description": "Max size of the tmpfs volume per pod (e.g. 10Mi)"
         },
-        "initMaxSecretSize": {
+        "maxSecretSize": {
           "type": "string",
           "description": "Default maximum secret size passed to chur-init"
         },
-        "initLocalBasePath": {
+        "localBasePath": {
           "type": "string",
           "description": "Default base path for the local provider passed to chur-init"
         },
