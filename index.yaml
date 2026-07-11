@@ -2,6 +2,17 @@ apiVersion: v1
 entries:
   chur:
   - apiVersion: v2
+    appVersion: 0.3.0
+    created: "2026-07-11T13:11:19.306150555Z"
+    description: Lightweight in-memory secret injection for Kubernetes
+    digest: 61c9e574259ebd2720f610eb2acb4d5e8cdf8869d21322957657791f7a1b118a
+    kubeVersion: '>=1.28.0-0'
+    name: chur
+    type: application
+    urls:
+    - https://github.com/lyafence/chur/releases/download/v0.3.0/chur-0.3.0.tgz
+    version: 0.3.0
+  - apiVersion: v2
     appVersion: 0.2.3
     created: "2026-07-09T20:41:21.864245987Z"
     description: Lightweight in-memory secret injection for Kubernetes
@@ -12,4 +23,4 @@ entries:
     urls:
     - https://github.com/lyafence/chur/releases/download/v0.2.3/chur-0.2.3.tgz
     version: 0.2.3
-generated: "2026-07-09T20:41:21.864258581Z"
+generated: "2026-07-11T13:11:19.30616028Z"
