@@ -42,7 +42,11 @@ func main() {
 		slog.ErrorContext(ctx, "CHUR_SECRET_REF is required")
 		os.Exit(1)
 	}
-	if err := validate.ValidateSecretRef(secretRef); err != nil {
+	validator := validate.ValidateSecretRef
+	if providerName == "keeper" {
+		validator = validate.ValidateKeeperRef
+	}
+	if err := validator(secretRef); err != nil {
 		slog.ErrorContext(ctx, "invalid CHUR_SECRET_REF", "error", err)
 		os.Exit(1)
 	}
@@ -77,13 +81,26 @@ func main() {
 		os.Exit(1)
 	}
 
-	path := filepath.Join(mountPath, secretRef)
-	if err := os.MkdirAll(mountPath, 0700); err != nil {
-		slog.ErrorContext(ctx, "failed to create mount dir", "path", mountPath, "error", err)
+	if err := validate.ValidateMountPath(mountPath); err != nil {
+		slog.ErrorContext(ctx, "invalid CHUR_MOUNT_PATH", "path", mountPath, "error", err)
 		os.Exit(1)
 	}
-	if err := os.WriteFile(path, secret, 0640); err != nil {
+
+	path := filepath.Join(mountPath, secretRef)
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		slog.ErrorContext(ctx, "failed to create secret directory", "path", filepath.Dir(path), "error", err)
+		os.Exit(1)
+	}
+
+	tmpPath := path + ".tmp"
+	if err := os.WriteFile(tmpPath, secret, 0640); err != nil {
+		os.Remove(tmpPath)
 		slog.ErrorContext(ctx, "failed to write secret", "path", path, "error", err)
+		os.Exit(1)
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		os.Remove(tmpPath)
+		slog.ErrorContext(ctx, "failed to rename secret", "path", path, "error", err)
 		os.Exit(1)
 	}
 

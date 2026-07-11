@@ -3,12 +3,15 @@ package webhook
 import (
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
+
+	"github.com/lyafence/chur/internal/provider"
 )
 
 func podWithAnnotations(annos map[string]string) *corev1.Pod {
@@ -48,6 +51,25 @@ func TestMutatePod_InvalidSecretRef(t *testing.T) {
 	_, err := MutatePod(pod, DefaultConfig())
 	if err == nil {
 		t.Fatal("expected error for invalid secret-ref")
+	}
+	if !errors.Is(err, ErrValidation) {
+		t.Fatalf("expected ErrValidation, got %v", err)
+	}
+}
+
+func TestMutatePod_InvalidSecretKey(t *testing.T) {
+	t.Parallel()
+	pod := podWithAnnotations(map[string]string{
+		annotationProvider:  "env",
+		annotationSecret:    "my-secret",
+		annotationSecretKey: "bad/key",
+	})
+	_, err := MutatePod(pod, DefaultConfig())
+	if err == nil {
+		t.Fatal("expected error for invalid secret-key")
+	}
+	if !errors.Is(err, ErrValidation) {
+		t.Fatalf("expected ErrValidation, got %v", err)
 	}
 }
 
@@ -472,7 +494,7 @@ func TestMutatePodKeeperEnvInjection(t *testing.T) {
 		MaxSecretSize:          "1Mi",
 		LocalBasePath:          "/etc/chur/secrets",
 		KeeperServiceName:      "chur-keeper",
-		KeeperServiceNamespace: "chur",
+		KeeperServiceNamespace: "chur-system",
 		KeeperServicePort:      "9443",
 	}
 	pod := &corev1.Pod{
@@ -508,7 +530,7 @@ func TestMutatePodKeeperEnvInjection(t *testing.T) {
 			for _, e := range containers[0].Env {
 				env[e.Name] = e.Value
 			}
-			if got, want := env["CHUR_KEEPER_URL"], "https://chur-keeper.chur.svc:9443"; got != want {
+			if got, want := env["CHUR_KEEPER_URL"], "https://chur-keeper.chur-system.svc:9443"; got != want {
 				t.Errorf("CHUR_KEEPER_URL = %q, want %q", got, want)
 			}
 			if got, want := env["CHUR_KEEPER_SKIP_VERIFY"], "1"; got != want {
@@ -579,5 +601,206 @@ func TestMutatePod_CustomInitImage(t *testing.T) {
 	}
 	if initContainer.Image != "my-registry/chur-init:v1.0.0" {
 		t.Fatalf("expected image my-registry/chur-init:v1.0.0, got %s", initContainer.Image)
+	}
+}
+
+func TestMutatePod_LocalProvider(t *testing.T) {
+	t.Parallel()
+	cfg := DefaultConfig()
+	cfg.LocalBasePath = "/host/secrets"
+	pod := podWithAnnotations(map[string]string{
+		annotationProvider: "local",
+		annotationSecret:   "my-secret",
+	})
+	patch, err := MutatePod(pod, cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var foundHostPath bool
+	var foundReadOnly bool
+	for _, op := range patch {
+		if op.Path == "/spec/volumes/-" {
+			if v, ok := op.Value.(corev1.Volume); ok {
+				if v.Name == "chur-local-base" && v.HostPath != nil {
+					foundHostPath = true
+				}
+			}
+		}
+		if op.Path == "/spec/initContainers" {
+			if arr, ok := op.Value.([]corev1.Container); ok && len(arr) > 0 {
+				for _, vm := range arr[0].VolumeMounts {
+					if vm.Name == "chur-local-base" && vm.ReadOnly {
+						foundReadOnly = true
+					}
+				}
+			}
+		}
+	}
+	if !foundHostPath {
+		t.Error("expected hostPath volume for local provider")
+	}
+	if !foundReadOnly {
+		t.Error("expected read-only mount for local provider")
+	}
+}
+
+func TestMutatePod_KeeperSkipVerifyValues(t *testing.T) {
+	t.Parallel()
+	cfg := &Config{
+		VolumeSizeLimit:        resource.MustParse("10Mi"),
+		InitImage:              "chur-init:latest",
+		MaxSecretSize:          "1Mi",
+		LocalBasePath:          "/etc/chur/secrets",
+		KeeperServiceName:      "chur-keeper",
+		KeeperServiceNamespace: "chur-system",
+		KeeperServicePort:      "9443",
+	}
+	tests := []struct {
+		name    string
+		annoVal string
+		wantEnv bool
+	}{
+		{"true sets env", "true", true},
+		{"1 sets env", "1", true},
+		{"false does not set env", "false", false},
+		{"empty does not set env", "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			annos := map[string]string{
+				annotationProvider: "keeper",
+				annotationSecret:   "ref",
+			}
+			if tt.annoVal != "" {
+				annos[annotationKeeperSkipVerify] = tt.annoVal
+			}
+			pod := &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test", Namespace: "default", Annotations: annos,
+				},
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{{Name: "app", Image: "app"}},
+				},
+			}
+			patches, err := MutatePod(pod, cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var found bool
+			for _, p := range patches {
+				if p.Path == "/spec/initContainers" || p.Path == "/spec/initContainers/-" {
+					switch v := p.Value.(type) {
+					case corev1.Container:
+						for _, e := range v.Env {
+							if e.Name == "CHUR_KEEPER_SKIP_VERIFY" {
+								found = true
+							}
+						}
+					case []corev1.Container:
+						for _, c := range v {
+							for _, e := range c.Env {
+								if e.Name == "CHUR_KEEPER_SKIP_VERIFY" {
+									found = true
+								}
+							}
+						}
+					}
+				}
+			}
+			if tt.wantEnv && !found {
+				t.Error("expected CHUR_KEEPER_SKIP_VERIFY env var")
+			}
+			if !tt.wantEnv && found {
+				t.Error("unexpected CHUR_KEEPER_SKIP_VERIFY env var")
+			}
+		})
+	}
+}
+
+func TestValidProviderEnvKey(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		key   string
+		valid bool
+	}{
+		{"", false},
+		{"CHUR_FOO", true},
+		{"CHUR_123", true},
+		{"CHUR_", true},
+		{"chur_foo", false},
+		{"BAD_KEY", false},
+		{"CHUR_" + strings.Repeat("A", 129), false},
+		{"CHUR_HELLO_WORLD", true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.key, func(t *testing.T) {
+			got := validProviderEnvKey(tc.key)
+			if got != tc.valid {
+				t.Errorf("validProviderEnvKey(%q) = %v, want %v", tc.key, got, tc.valid)
+			}
+		})
+	}
+}
+
+func TestParseProviderEnvReservedEnv(t *testing.T) {
+	t.Parallel()
+	cfg := &Config{
+		VolumeSizeLimit:        resource.MustParse("10Mi"),
+		InitImage:              "chur-init:latest",
+		MaxSecretSize:          "1Mi",
+		LocalBasePath:          "/etc/chur/secrets",
+		KeeperServiceName:      "chur-keeper",
+		KeeperServiceNamespace: "chur-system",
+		KeeperServicePort:      "9443",
+	}
+	for _, reserved := range []string{
+		"CHUR_PROVIDER",
+		"CHUR_SECRET_REF",
+		"CHUR_SECRET_KEY",
+		"CHUR_MOUNT_PATH",
+		"CHUR_MAX_SECRET_SIZE",
+		"CHUR_LOCAL_BASE_PATH",
+		"CHUR_KEEPER_URL",
+	} {
+		t.Run(reserved, func(t *testing.T) {
+			anno := `{"` + reserved + `":"value"}`
+			pod := &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test",
+					Namespace: "default",
+					Annotations: map[string]string{
+						annotationProvider:    "keeper",
+						annotationSecret:      "ref",
+						annotationProviderEnv: anno,
+					},
+				},
+			}
+			if _, err := MutatePod(pod, cfg); err == nil {
+				t.Errorf("expected error for reserved key %q", reserved)
+			}
+		})
+	}
+}
+
+func TestValidProvidersMatchRegistry(t *testing.T) {
+	t.Parallel()
+	registered := provider.Names()
+	for _, name := range registered {
+		if !validProviders[name] {
+			t.Errorf("registry has %q but validProviders does not", name)
+		}
+	}
+	for name := range validProviders {
+		found := false
+		for _, r := range registered {
+			if r == name {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("validProviders has %q but registry does not", name)
+		}
 	}
 }

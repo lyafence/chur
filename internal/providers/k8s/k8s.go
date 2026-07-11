@@ -68,8 +68,18 @@ func init() {
 			return nil, fmt.Errorf("k8s: create client: %w", err)
 		}
 		ns := "default"
-		if data, err := os.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/namespace"); err == nil {
-			ns = string(data)
+		nsDone := make(chan []byte, 1)
+		go func() {
+			data, _ := os.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/namespace")
+			nsDone <- data
+		}()
+		select {
+		case data := <-nsDone:
+			if len(data) > 0 {
+				ns = string(data)
+			}
+		case <-ctx.Done():
+			return nil, ctx.Err()
 		}
 
 		secretKey := os.Getenv("CHUR_SECRET_KEY")

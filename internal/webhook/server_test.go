@@ -126,6 +126,9 @@ func TestServer_Mutate_DeniesNonPod(t *testing.T) {
 	if resp.Response.Allowed {
 		t.Fatal("expected denied for non-Pod request")
 	}
+	if resp.Response.Result == nil || resp.Response.Result.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 BadRequest, got %v", resp.Response.Result)
+	}
 }
 
 func TestServer_Mutate_DeniesInvalidPodObject(t *testing.T) {
@@ -345,6 +348,57 @@ func TestReadyz(t *testing.T) {
 	}
 	if body["status"] != "ok" {
 		t.Fatalf("expected status ok, got %q", body["status"])
+	}
+}
+
+func TestServer_Mutate_AllowsPod_NoAnnotations(t *testing.T) {
+	t.Parallel()
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "plain-pod",
+			Namespace: "default",
+		},
+		Spec: corev1.PodSpec{
+			Containers: []corev1.Container{{Name: "app", Image: "app"}},
+		},
+	}
+
+	review := admissionv1.AdmissionReview{
+		Request: &admissionv1.AdmissionRequest{
+			UID: "test-uid",
+			Kind: metav1.GroupVersionKind{
+				Group: "", Version: "v1", Kind: "Pod",
+			},
+			Object: runtime.RawExtension{Raw: mustEncodePod(t, pod)},
+		},
+	}
+
+	body, _ := json.Marshal(review)
+	req := httptest.NewRequest(http.MethodPost, "/mutate", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	srv := newTestServer(t)
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	var resp admissionv1.AdmissionReview
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.Response == nil {
+		t.Fatal("expected response")
+	}
+	if !resp.Response.Allowed {
+		t.Fatal("expected allowed for non-chur pod")
+	}
+	if resp.Response.Patch != nil {
+		t.Fatal("expected no patch for pod without chur annotations")
+	}
+	if resp.Response.PatchType != nil {
+		t.Fatal("expected nil PatchType for pod without chur annotations")
 	}
 }
 

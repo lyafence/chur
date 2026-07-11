@@ -22,7 +22,8 @@ func (m *mockBackend) GetSecret(_ context.Context, _ string) ([]byte, error) {
 func TestHandleGetSecretSuccess(t *testing.T) {
 	t.Parallel()
 	b := &mockBackend{data: []byte("secret-value")}
-	h := handleGetSecret(b, 1<<20)
+	sem := make(chan struct{}, 100)
+	h := handleGetSecret(b, 1<<20, sem)
 
 	body, _ := json.Marshal(map[string]string{"ref": "test/secret"})
 	req := httptest.NewRequest(http.MethodPost, "/v1/secrets/get", bytes.NewReader(body))
@@ -40,7 +41,8 @@ func TestHandleGetSecretSuccess(t *testing.T) {
 func TestHandleGetSecretNotFound(t *testing.T) {
 	t.Parallel()
 	b := &mockBackend{data: nil, err: &backendError{msg: "not found", code: http.StatusNotFound}}
-	h := handleGetSecret(b, 1<<20)
+	sem := make(chan struct{}, 100)
+	h := handleGetSecret(b, 1<<20, sem)
 
 	body, _ := json.Marshal(map[string]string{"ref": "missing"})
 	req := httptest.NewRequest(http.MethodPost, "/v1/secrets/get", bytes.NewReader(body))
@@ -62,7 +64,8 @@ func TestHandleGetSecretNotFound(t *testing.T) {
 func TestHandleGetSecretBadJSON(t *testing.T) {
 	t.Parallel()
 	b := &mockBackend{}
-	h := handleGetSecret(b, 1<<20)
+	sem := make(chan struct{}, 100)
+	h := handleGetSecret(b, 1<<20, sem)
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/secrets/get", bytes.NewReader([]byte("{bad")))
 	rec := httptest.NewRecorder()
@@ -73,10 +76,41 @@ func TestHandleGetSecretBadJSON(t *testing.T) {
 	}
 }
 
+func TestHandleGetSecretWrongMethod(t *testing.T) {
+	t.Parallel()
+	b := &mockBackend{}
+	sem := make(chan struct{}, 100)
+	h := handleGetSecret(b, 1<<20, sem)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/secrets/get", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("expected 405, got %d", rec.Code)
+	}
+}
+
+func TestHandleGetSecretWrongPath(t *testing.T) {
+	t.Parallel()
+	b := &mockBackend{}
+	sem := make(chan struct{}, 100)
+	h := handleGetSecret(b, 1<<20, sem)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/secrets/put", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rec.Code)
+	}
+}
+
 func TestHandleGetSecretOverMaxSize(t *testing.T) {
 	t.Parallel()
 	b := &mockBackend{data: []byte("too-big")}
-	h := handleGetSecret(b, 5)
+	sem := make(chan struct{}, 100)
+	h := handleGetSecret(b, 5, sem)
 
 	body, _ := json.Marshal(map[string]string{"ref": "x"})
 	req := httptest.NewRequest(http.MethodPost, "/v1/secrets/get", bytes.NewReader(body))

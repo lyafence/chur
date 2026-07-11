@@ -14,7 +14,7 @@ func TestLocalProvider_GetSecret(t *testing.T) {
 		t.Fatalf("setup: %v", err)
 	}
 
-	p := &LocalProvider{basePath: dir}
+	p := &LocalProvider{basePath: dir, maxSize: 1 << 20}
 	ctx := context.Background()
 
 	secret, err := p.GetSecret(ctx, "secret.txt")
@@ -42,7 +42,7 @@ func TestLocalProvider_GetSecret_PathTraversal(t *testing.T) {
 		t.Fatalf("setup: %v", err)
 	}
 
-	p := &LocalProvider{basePath: dir}
+	p := &LocalProvider{basePath: dir, maxSize: 1 << 20}
 	ctx := context.Background()
 
 	_, err := p.GetSecret(ctx, "../outside.txt")

@@ -98,6 +98,47 @@ func TestE2E_LocalProvider(t *testing.T) {
 	t.Logf("local secret verified: %s = %s", secretRef, result)
 }
 
+func TestE2E_KeeperProvider(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping e2e test")
+	}
+
+	ns := os.Getenv("CHUR_E2E_NAMESPACE")
+	if ns == "" {
+		t.Skip("CHUR_E2E_NAMESPACE not set — use 'make e2e' to run integration tests")
+	}
+
+	secretRef := "prod/db/password"
+	testValue := "e2e-keeper-secret-value"
+
+	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
+	kubeconfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, &clientcmd.ConfigOverrides{})
+	cfg, err := kubeconfig.ClientConfig()
+	if err != nil {
+		t.Fatalf("kubeconfig: %v", err)
+	}
+	clientset, err := kubernetes.NewForConfig(cfg)
+	if err != nil {
+		t.Fatalf("clientset: %v", err)
+	}
+
+	podName := "test-pod-keeper"
+	createKeeperTestPod(t, clientset, ns, podName, secretRef)
+	defer deletePod(t, clientset, ns, podName)
+
+	waitForPodReady(t, clientset, ns, podName, 2*time.Minute)
+
+	stdout, stderr, err := execInPod("", ns, podName, "app", "cat", "/secrets/"+secretRef)
+	if err != nil {
+		t.Fatalf("exec failed: %v\nstderr: %s", err, stderr)
+	}
+	result := strings.TrimSpace(stdout)
+	if result != testValue {
+		t.Fatalf("secret mismatch: expected %q, got %q", testValue, result)
+	}
+	t.Logf("keeper secret verified: %s = %s", secretRef, result)
+}
+
 func TestE2E_UnknownProvider(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping e2e test")

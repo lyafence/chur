@@ -14,7 +14,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/lyafence/chur/internal/webhook"
+	churtls "github.com/lyafence/chur/internal/tls"
 )
 
 type backendError struct {
@@ -39,7 +39,8 @@ func Serve(ctx context.Context, cfg *Config, tlsCfg *tls.Config, listener net.Li
 	defer cancel()
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/v1/secrets/get", handleGetSecret(cfg.Backend, cfg.MaxSecretSize).ServeHTTP)
+	sem := make(chan struct{}, cfg.MaxConcurrent)
+	mux.HandleFunc("/v1/secrets/get", handleGetSecret(cfg.Backend, cfg.MaxSecretSize, sem).ServeHTTP)
 
 	srv := &http.Server{
 		Handler:           mux,
@@ -50,6 +51,8 @@ func Serve(ctx context.Context, cfg *Config, tlsCfg *tls.Config, listener net.Li
 		IdleTimeout:       90 * time.Second,
 		MaxHeaderBytes:    1 << 20,
 	}
+
+	srvErr := make(chan error, 1)
 
 	var healthSrv *http.Server
 	if cfg.HealthListen != "" {
@@ -66,10 +69,11 @@ func Serve(ctx context.Context, cfg *Config, tlsCfg *tls.Config, listener net.Li
 			slog.InfoContext(ctx, "keeper health server starting", "addr", cfg.HealthListen)
 			if err := healthSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 				slog.ErrorContext(ctx, "keeper health server error", "error", err)
+				srvErr <- err
+				return
 			}
 		}()
 	}
-
 	go func() {
 		slog.InfoContext(ctx, "keeper server starting",
 			"addr", listener.Addr().String(),
@@ -78,12 +82,19 @@ func Serve(ctx context.Context, cfg *Config, tlsCfg *tls.Config, listener net.Li
 		)
 		if err := srv.ServeTLS(listener, "", ""); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			slog.ErrorContext(ctx, "keeper server error", "error", err)
-			cancel()
+			srvErr <- err
+			return
 		}
 	}()
 
-	<-ctx.Done()
-	slog.InfoContext(ctx, "keeper shutting down...")
+	select {
+	case <-ctx.Done():
+		slog.InfoContext(ctx, "keeper shutting down...")
+	case err := <-srvErr:
+		slog.ErrorContext(ctx, "keeper server failed, shutting down", "error", err)
+		cancel()
+	}
+
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer shutdownCancel()
 
@@ -92,7 +103,16 @@ func Serve(ctx context.Context, cfg *Config, tlsCfg *tls.Config, listener net.Li
 			slog.ErrorContext(ctx, "keeper health server shutdown error", "error", err)
 		}
 	}
-	return srv.Shutdown(shutdownCtx)
+	shutdownErr := srv.Shutdown(shutdownCtx)
+
+	select {
+	case err := <-srvErr:
+		if err != nil {
+			return err
+		}
+	default:
+	}
+	return shutdownErr
 }
 
 func healthz(w http.ResponseWriter, r *http.Request) {
@@ -105,7 +125,7 @@ func healthz(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte(`{"status":"ok"}`))
 }
 
-func handleGetSecret(b Backend, maxSize int64) http.HandlerFunc {
+func handleGetSecret(b Backend, maxSize int64, sem chan struct{}) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			writeError(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -115,6 +135,14 @@ func handleGetSecret(b Backend, maxSize int64) http.HandlerFunc {
 			writeError(w, "not found", http.StatusNotFound)
 			return
 		}
+
+		select {
+		case sem <- struct{}{}:
+		case <-r.Context().Done():
+			writeError(w, "server busy", http.StatusServiceUnavailable)
+			return
+		}
+		defer func() { <-sem }()
 
 		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 
@@ -185,13 +213,13 @@ func ServerTLSConfig(_ context.Context, cfg *Config) (*tls.Config, func() error,
 			cleanup = func() error { return os.RemoveAll(tmpDir) }
 			certFile = tmpDir + "/tls.crt"
 			keyFile = tmpDir + "/tls.key"
-			if err := webhook.GenerateTLSCert(dnsName, certFile, keyFile); err != nil {
+			if err := churtls.GenerateTLSCert(dnsName, certFile, keyFile); err != nil {
 				_ = cleanup()
 				return nil, nil, fmt.Errorf("keeper: generate cert: %w", err)
 			}
 		}
 
-		tlsCfg, err := webhook.ServerTLSConfig(nil, certFile, keyFile)
+		tlsCfg, err := churtls.ServerTLSConfig(nil, certFile, keyFile)
 		if err != nil {
 			_ = cleanup()
 			return nil, nil, err
@@ -209,7 +237,7 @@ func ServerTLSConfig(_ context.Context, cfg *Config) (*tls.Config, func() error,
 		if err != nil {
 			return nil, nil, fmt.Errorf("keeper: read client CA: %w", err)
 		}
-		tlsCfg, err := webhook.ServerTLSConfig(clientCACert, cfg.TLSCertFile, cfg.TLSKeyFile)
+		tlsCfg, err := churtls.ServerTLSConfig(clientCACert, cfg.TLSCertFile, cfg.TLSKeyFile)
 		if err != nil {
 			return nil, nil, err
 		}

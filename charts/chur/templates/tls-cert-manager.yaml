@@ -18,8 +18,8 @@ metadata:
     {{- include "chur.labels" . | nindent 4 }}
 spec:
   secretName: {{ .Values.tls.userSecret.name }}
-  duration: 8760h
-  renewBefore: 360h
+  duration: {{ .Values.tls.certManager.duration | quote }}
+  renewBefore: {{ .Values.tls.certManager.renewBefore | quote }}
   issuerRef:
     name: {{ .Values.tls.certManager.issuerName }}
     kind: {{ .Values.tls.certManager.issuerKind }}

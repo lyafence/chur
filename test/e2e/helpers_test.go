@@ -75,6 +75,15 @@ func createLocalTestPod(t *testing.T, cs kubernetes.Interface, ns, name, secretR
 	})
 }
 
+func createKeeperTestPod(t *testing.T, cs kubernetes.Interface, ns, name, secretRef string) {
+	t.Helper()
+	createTestPod(t, cs, ns, name, map[string]string{
+		"chur.io/provider":           "keeper",
+		"chur.io/secret-ref":         secretRef,
+		"chur.io/keeper-skip-verify": "true",
+	})
+}
+
 func deletePod(t *testing.T, cs kubernetes.Interface, ns, name string) {
 	t.Helper()
 	if err := cs.CoreV1().Pods(ns).Delete(t.Context(), name, metav1.DeleteOptions{}); err != nil {

@@ -22,6 +22,8 @@ release/
 linux/
 target/
 /init
+/keeper
+/webhook
 *.exe
 *.tmp
 *~

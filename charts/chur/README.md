@@ -23,12 +23,11 @@ Configure via `--set` or a custom values file.
 ### Development / CI (no cert-manager)
 
 ```bash
-helm install chur . -f values-dev.yaml --wait
+helm install chur . --set tls.provider=helmGenerated --wait
 ```
 
-This uses Helm's built-in self-signed certificate generation. The private key
-is stored in the Helm release Secret and a new certificate is generated on
-every upgrade. **Not for production.**
+This uses Helm's built-in self-signed certificate generation. A new certificate
+is generated on every upgrade. **Not for production.**
 
 ### User-provided TLS certificate
 
@@ -80,9 +79,9 @@ The `keeper` section controls the optional `chur-keeper` deployment:
 | `keeper.volume.hostPath.path` | `/var/lib/chur-keeper/secrets` | Host path for filesystem backend |
 | `keeper.volume.hostPath.type` | `DirectoryOrCreate` | Host path type |
 | `keeper.tls.existingSecret` | `""` | Existing TLS Secret name (required for `mtls`) |
-| `keeper.mtls.clientCA.existingSecret` | `""` | Existing Secret with mTLS client CA |
-| `keeper.mtls.clientCA.existingConfigMap` | `""` | Existing ConfigMap with mTLS client CA |
-| `keeper.clientTLS.existingSecret` | `""` | Existing Secret with client TLS cert for chur-init |
+| `keeper.mtls.clientCA.existingSecret` | `""` | Existing Secret with CA bundle for verifying mTLS client certs |
+| `keeper.mtls.clientCA.existingConfigMap` | `""` | Alternative to existingSecret — ConfigMap with CA bundle |
+| `keeper.clientTLS.existingSecret` | `""` | Existing Secret (tls.crt + tls.key) for keeper's server TLS identity |
 | `keeper.service.type` | `ClusterIP` | Keeper service type |
 | `keeper.service.port` | `9443` | Keeper service HTTPS port |
 | `keeper.extraVolumes` | `[]` | Extra volumes for the keeper pod |
@@ -93,6 +92,37 @@ The `keeper` section controls the optional `chur-keeper` deployment:
 When `keeper.enabled=true`, the webhook automatically injects `CHUR_KEEPER_URL`
 into every `chur-init` container. Use `chur.io/provider: keeper` in your Pod
 annotations to route secret fetching through the keeper.
+
+Additional keeper annotations:
+
+| Annotation | Effect |
+|---|---|
+| `chur.io/keeper-skip-verify: "true"` | Injects `CHUR_KEEPER_SKIP_VERIFY=1` (dev, skips TLS verification) |
+| `chur.io/provider-env: '{"CHUR_KEEPER_SERVER_CA":"/etc/chur-keeper/ca.crt"}'` | Injects arbitrary `CHUR_*` env vars into `chur-init` |
+
+Note: To provision client-side certificates for `chur-init`, mount a Secret via `extraVolumes` on the application Pod and configure paths through the `chur.io/provider-env` annotation:
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  annotations:
+    chur.io/provider: keeper
+    chur.io/secret-ref: prod/db/password
+    chur.io/provider-env: |
+      {"CHUR_KEEPER_SERVER_CA":"/etc/keeper-ca/ca.crt"}
+spec:
+  volumes:
+    - name: keeper-ca
+      secret:
+        secretName: keeper-server-ca
+  initContainers:
+    - name: chur-init
+      volumeMounts:
+        - name: keeper-ca
+          mountPath: /etc/keeper-ca
+          readOnly: true
+```
 
 ## Values
 

@@ -11,9 +11,18 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/utils/ptr"
 
-	"github.com/lyafence/chur/internal/provider"
 	"github.com/lyafence/chur/internal/validate"
 )
+
+// validProviders lists all provider names that the webhook can pass to chur-init.
+// This is the webhook's own list — it does not depend on the provider registry
+// (which may have build-tag-gated entries like k8s).
+var validProviders = map[string]bool{
+	"env":    true,
+	"local":  true,
+	"k8s":    true,
+	"keeper": true,
+}
 
 // ErrValidation indicates that the pod annotations failed validation.
 // The webhook should respond with HTTP 400 BadRequest for these errors.
@@ -27,8 +36,7 @@ const (
 	annotationKeeperSkipVerify = "chur.io/keeper-skip-verify"
 	annotationProviderEnv      = "chur.io/provider-env"
 
-	opAdd                    = "add"
-	defaultChurFSGroup int64 = 1001
+	opAdd = "add"
 )
 
 // PatchOperation represents a single JSON Patch operation.
@@ -43,9 +51,13 @@ type Config struct {
 	VolumeSizeLimit        resource.Quantity
 	AllowedNamespaces      []string
 	InitImage              string
+	InitImagePullPolicy    corev1.PullPolicy
 	MaxSecretSize          string
 	LocalBasePath          string
 	MaxConcurrent          int
+	RunAsUser              int64
+	RunAsGroup             *int64
+	FSGroup                int64
 	KeeperServiceName      string
 	KeeperServiceNamespace string
 	KeeperServicePort      string
@@ -56,10 +68,13 @@ func DefaultConfig() *Config {
 	return &Config{
 		VolumeSizeLimit:        resource.MustParse("10Mi"),
 		InitImage:              "ghcr.io/lyafence/chur-init:latest",
+		InitImagePullPolicy:    corev1.PullIfNotPresent,
 		MaxSecretSize:          "1Mi",
 		LocalBasePath:          "/etc/chur/secrets",
 		MaxConcurrent:          100,
-		KeeperServiceNamespace: "chur",
+		RunAsUser:              1001,
+		FSGroup:                1001,
+		KeeperServiceNamespace: "chur-system",
 		KeeperServicePort:      "9443",
 	}
 }
@@ -144,7 +159,7 @@ func MutatePod(pod *corev1.Pod, cfg *Config) ([]PatchOperation, error) {
 	if providerName == "" {
 		return nil, fmt.Errorf("%w: %s annotation must not be empty", ErrValidation, annotationProvider)
 	}
-	if !provider.IsValidName(providerName) {
+	if !validProviders[providerName] {
 		return nil, fmt.Errorf("%w: unknown provider %q", ErrValidation, providerName)
 	}
 
@@ -172,7 +187,7 @@ func MutatePod(pod *corev1.Pod, cfg *Config) ([]PatchOperation, error) {
 
 	// Determine the group that will own the shared tmpfs volume.
 	// If the pod already specifies fsGroup, respect it; otherwise inject one.
-	fsGroup := defaultChurFSGroup
+	fsGroup := cfg.FSGroup
 	if pod.Spec.SecurityContext != nil && pod.Spec.SecurityContext.FSGroup != nil {
 		fsGroup = *pod.Spec.SecurityContext.FSGroup
 	}
@@ -198,35 +213,37 @@ func MutatePod(pod *corev1.Pod, cfg *Config) ([]PatchOperation, error) {
 		})
 	}
 
-	// Add the tmpfs volume, creating the array if necessary.
-	if len(pod.Spec.Volumes) == 0 {
-		patches = append(patches, PatchOperation{
-			Op:   opAdd,
-			Path: "/spec/volumes",
-			Value: []corev1.Volume{{
-				Name: volName,
-				VolumeSource: corev1.VolumeSource{
-					EmptyDir: &corev1.EmptyDirVolumeSource{
-						Medium:    corev1.StorageMediumMemory,
-						SizeLimit: &cfg.VolumeSizeLimit,
+	// Add the tmpfs volume if not already present (idempotent).
+	if !volumeExists(pod.Spec.Volumes, volName) {
+		if len(pod.Spec.Volumes) == 0 {
+			patches = append(patches, PatchOperation{
+				Op:   opAdd,
+				Path: "/spec/volumes",
+				Value: []corev1.Volume{{
+					Name: volName,
+					VolumeSource: corev1.VolumeSource{
+						EmptyDir: &corev1.EmptyDirVolumeSource{
+							Medium:    corev1.StorageMediumMemory,
+							SizeLimit: &cfg.VolumeSizeLimit,
+						},
+					},
+				}},
+			})
+		} else {
+			patches = append(patches, PatchOperation{
+				Op:   opAdd,
+				Path: "/spec/volumes/-",
+				Value: corev1.Volume{
+					Name: volName,
+					VolumeSource: corev1.VolumeSource{
+						EmptyDir: &corev1.EmptyDirVolumeSource{
+							Medium:    corev1.StorageMediumMemory,
+							SizeLimit: &cfg.VolumeSizeLimit,
+						},
 					},
 				},
-			}},
-		})
-	} else {
-		patches = append(patches, PatchOperation{
-			Op:   opAdd,
-			Path: "/spec/volumes/-",
-			Value: corev1.Volume{
-				Name: volName,
-				VolumeSource: corev1.VolumeSource{
-					EmptyDir: &corev1.EmptyDirVolumeSource{
-						Medium:    corev1.StorageMediumMemory,
-						SizeLimit: &cfg.VolumeSizeLimit,
-					},
-				},
-			},
-		})
+			})
+		}
 	}
 
 	initEnv := []corev1.EnvVar{
@@ -245,7 +262,7 @@ func MutatePod(pod *corev1.Pod, cfg *Config) ([]PatchOperation, error) {
 			url := fmt.Sprintf("https://%s.%s.svc:%s", cfg.KeeperServiceName, cfg.KeeperServiceNamespace, cfg.KeeperServicePort)
 			initEnv = append(initEnv, corev1.EnvVar{Name: "CHUR_KEEPER_URL", Value: url})
 		}
-		if pod.Annotations[annotationKeeperSkipVerify] == "true" {
+		if pod.Annotations[annotationKeeperSkipVerify] == "1" || pod.Annotations[annotationKeeperSkipVerify] == "true" {
 			initEnv = append(initEnv, corev1.EnvVar{Name: "CHUR_KEEPER_SKIP_VERIFY", Value: "1"})
 		}
 		extraEnv, err := parseProviderEnv(pod.Annotations[annotationProviderEnv])
@@ -258,7 +275,7 @@ func MutatePod(pod *corev1.Pod, cfg *Config) ([]PatchOperation, error) {
 	// The local provider reads files from the node filesystem. Mount the base
 	// directory as a read-only hostPath volume into the init container only.
 	localVolName := "chur-local-base"
-	if providerName == "local" {
+	if providerName == "local" && !volumeExists(pod.Spec.Volumes, localVolName) {
 		patches = append(patches, PatchOperation{
 			Op:   opAdd,
 			Path: "/spec/volumes/-",
@@ -274,16 +291,22 @@ func MutatePod(pod *corev1.Pod, cfg *Config) ([]PatchOperation, error) {
 		})
 	}
 
-	// Add the chur-init init container, creating the array if necessary.
+	// Add the chur-init init container if not already present (idempotent).
+	const initContainerName = "chur-init"
+
+	runAsGroup := cfg.RunAsGroup
+	if runAsGroup == nil {
+		runAsGroup = ptr.To(fsGroup)
+	}
 	initContainer := corev1.Container{
-		Name:            "chur-init",
+		Name:            initContainerName,
 		Image:           cfg.InitImage,
-		ImagePullPolicy: corev1.PullIfNotPresent,
+		ImagePullPolicy: cfg.InitImagePullPolicy,
 		Command:         []string{"/chur-init"},
 		SecurityContext: &corev1.SecurityContext{
 			RunAsNonRoot:             ptr.To(true),
-			RunAsUser:                ptr.To[int64](1001),
-			RunAsGroup:               ptr.To(fsGroup),
+			RunAsUser:                ptr.To(cfg.RunAsUser),
+			RunAsGroup:               runAsGroup,
 			ReadOnlyRootFilesystem:   ptr.To(true),
 			AllowPrivilegeEscalation: ptr.To(false),
 			Capabilities: &corev1.Capabilities{
@@ -305,22 +328,27 @@ func MutatePod(pod *corev1.Pod, cfg *Config) ([]PatchOperation, error) {
 			ReadOnly:  true,
 		})
 	}
-	if len(pod.Spec.InitContainers) == 0 {
-		patches = append(patches, PatchOperation{
-			Op:    opAdd,
-			Path:  "/spec/initContainers",
-			Value: []corev1.Container{initContainer},
-		})
-	} else {
-		patches = append(patches, PatchOperation{
-			Op:    opAdd,
-			Path:  "/spec/initContainers/-",
-			Value: initContainer,
-		})
+	if !initContainerExists(pod.Spec.InitContainers, initContainerName) {
+		if len(pod.Spec.InitContainers) == 0 {
+			patches = append(patches, PatchOperation{
+				Op:    opAdd,
+				Path:  "/spec/initContainers",
+				Value: []corev1.Container{initContainer},
+			})
+		} else {
+			patches = append(patches, PatchOperation{
+				Op:    opAdd,
+				Path:  "/spec/initContainers/-",
+				Value: initContainer,
+			})
+		}
 	}
 
-	// Mount the tmpfs volume to every app container.
+	// Mount the tmpfs volume to every app container if not already mounted (idempotent).
 	for i := range pod.Spec.Containers {
+		if volumeMountExists(pod.Spec.Containers[i].VolumeMounts, volName, mountPath) {
+			continue
+		}
 		if len(pod.Spec.Containers[i].VolumeMounts) == 0 {
 			patches = append(patches, PatchOperation{
 				Op:   opAdd,
@@ -345,4 +373,31 @@ func MutatePod(pod *corev1.Pod, cfg *Config) ([]PatchOperation, error) {
 	}
 
 	return patches, nil
+}
+
+func volumeExists(volumes []corev1.Volume, name string) bool {
+	for _, v := range volumes {
+		if v.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+func initContainerExists(containers []corev1.Container, name string) bool {
+	for _, c := range containers {
+		if c.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+func volumeMountExists(mounts []corev1.VolumeMount, name, mountPath string) bool {
+	for _, m := range mounts {
+		if m.Name == name && m.MountPath == mountPath {
+			return true
+		}
+	}
+	return false
 }

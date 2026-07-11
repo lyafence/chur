@@ -9,10 +9,12 @@ spec:
   selector:
     matchLabels:
       {{- include "chur.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: webhook
   template:
     metadata:
       labels:
         {{- include "chur.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: webhook
       annotations:
         checksum/tls: {{ .Values.tls.userSecret.name | sha256sum }}-{{ .Values.tls.provider | sha256sum }}
     spec:
@@ -25,9 +27,9 @@ spec:
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
-            - containerPort: 8443
+            - containerPort: {{ .Values.webhook.listen | toString | splitList ":" | last | atoi | default 8443 }}
               name: https
-            - containerPort: 8080
+            - containerPort: {{ .Values.webhook.healthListen | toString | splitList ":" | last | atoi | default 8080 }}
               name: health
           env:
             - name: CHUR_LISTEN

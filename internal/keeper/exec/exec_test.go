@@ -47,6 +47,26 @@ printf done
 	}
 }
 
+func TestExecUnlimitedStdout(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	script := filepath.Join(dir, "unlimited.sh")
+	if err := os.WriteFile(script, []byte(`#!/bin/sh
+printf "stdout-data-$1"
+`), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	b := New(script, 0, 0)
+	data, err := b.GetSecret(context.Background(), "test-ref")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "stdout-data-test-ref" {
+		t.Errorf("got %q, want %q", string(data), "stdout-data-test-ref")
+	}
+}
+
 func TestExecMaxStdout(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()

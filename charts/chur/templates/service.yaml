@@ -13,3 +13,4 @@ spec:
       name: https
   selector:
     {{- include "chur.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: webhook

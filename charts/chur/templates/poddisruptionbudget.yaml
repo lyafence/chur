@@ -10,4 +10,5 @@ spec:
   selector:
     matchLabels:
       {{- include "chur.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: webhook
 {{- end }}

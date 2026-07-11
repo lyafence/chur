@@ -1,6 +1,6 @@
 # chur Threat Model
 
-This document describes the security model of `chur` as of v0.2.
+This document describes the security model of `chur` (includes optional chur-keeper).
 
 ## Security Goals
 
@@ -38,6 +38,11 @@ chur-webhook (Deployment)
         ▼
         Pod
         ├── chur-init (reads provider, writes secret to tmpfs)
+        │       │
+        │       └──(keeper)──► chur-keeper (optional, HTTPS)
+        │                          │
+        │                          ├── filesystem backend
+        │                          └── exec backend
         └── app container (reads secret from tmpfs)
 ```
 
@@ -93,7 +98,8 @@ Trust assumptions:
 
 - **Scenario:** A huge secret exhausts node memory or init container time.
 - **Mitigation:** `CHUR_MAX_SECRET_SIZE` limits the size of a fetched secret.
-  `CHUR_VOLUME_SIZE_LIMIT` bounds the tmpfs volume.
+  `CHUR_VOLUME_SIZE_LIMIT` bounds the tmpfs volume. The optional `chur-keeper`
+  also enforces its own limit via `CHUR_KEEPER_MAX_SECRET_SIZE` (server-side).
 
 ### T7: Denial of service against the webhook
 
@@ -127,7 +133,7 @@ Trust assumptions:
 
 ## Non-Goals
 
-The following are intentionally out of scope for v0.2:
+The following are intentionally out of scope:
 
 - Secret rotation without Pod restart.
 - Lease or ownership model for secrets.

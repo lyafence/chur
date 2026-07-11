@@ -243,6 +243,14 @@
             "issuerName": {
               "type": "string",
               "description": "Name of cert-manager Issuer or ClusterIssuer"
+            },
+            "duration": {
+              "type": "string",
+              "description": "Certificate validity period (e.g. 8760h)"
+            },
+            "renewBefore": {
+              "type": "string",
+              "description": "How long before expiry to renew (e.g. 360h)"
             }
           }
         },
@@ -357,7 +365,43 @@
         },
         "backend": {
           "type": "string",
+          "enum": ["filesystem", "exec"],
           "description": "Secret storage backend"
+        },
+        "listen": {
+          "type": "string",
+          "description": "Listen address for the keeper HTTPS endpoint"
+        },
+        "healthListen": {
+          "type": "string",
+          "description": "Listen address for keeper health probes"
+        },
+        "maxSecretSize": {
+          "type": "string",
+          "description": "Maximum secret size the keeper will serve"
+        },
+        "maxConcurrent": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum number of concurrent requests"
+        },
+        "fsRoot": {
+          "type": "string",
+          "description": "Root directory for the filesystem backend"
+        },
+        "execCommand": {
+          "type": "string",
+          "description": "Command to execute for the exec backend (ref passed as argument)"
+        },
+        "execTimeout": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Command execution timeout in seconds"
+        },
+        "execMaxStdout": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Maximum stdout bytes for the exec backend"
         },
         "volume": {
           "type": "object",
@@ -386,6 +430,14 @@
             "existingSecret": {
               "type": "string",
               "description": "Name of an existing TLS Secret for the keeper (mtls only)"
+            },
+            "certPath": {
+              "type": "string",
+              "description": "Path to the TLS certificate inside the keeper container"
+            },
+            "keyPath": {
+              "type": "string",
+              "description": "Path to the TLS key inside the keeper container"
             }
           }
         },
@@ -403,7 +455,11 @@
                 },
                 "existingConfigMap": {
                   "type": "string",
-                  "description": "Name of a ConfigMap containing the client CA"
+                  "description": "Name of a ConfigMap containing the CA bundle for mTLS client cert verification"
+                },
+                "path": {
+                  "type": "string",
+                  "description": "Mount path for the client CA file"
                 }
               }
             }
@@ -415,7 +471,7 @@
           "properties": {
             "existingSecret": {
               "type": "string",
-              "description": "Name of a Secret containing the client TLS cert"
+              "description": "Name of a Secret (tls.crt + tls.key) for keeper's server TLS identity"
             }
           }
         },
@@ -455,7 +511,7 @@
               "type": "integer",
               "minimum": 1,
               "maximum": 65535,
-              "description": "Port that the keeper gRPC service listens on"
+              "description": "Port that the keeper HTTPS service listens on"
             }
           }
         },

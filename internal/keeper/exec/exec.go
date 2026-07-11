@@ -12,6 +12,26 @@ import (
 	"github.com/lyafence/chur/internal/validate"
 )
 
+type limitedWriter struct {
+	buf   bytes.Buffer
+	limit int64
+}
+
+func (w *limitedWriter) Write(p []byte) (int, error) {
+	remaining := w.limit - int64(w.buf.Len())
+	if remaining <= 0 {
+		return len(p), nil
+	}
+	if int64(len(p)) > remaining {
+		p = p[:remaining]
+	}
+	return w.buf.Write(p)
+}
+
+func (w *limitedWriter) String() string {
+	return w.buf.String()
+}
+
 type ExecBackend struct {
 	command   string
 	timeout   time.Duration
@@ -42,8 +62,12 @@ func (b *ExecBackend) GetSecret(ctx context.Context, ref string) ([]byte, error)
 	if err != nil {
 		return nil, fmt.Errorf("exec: stdout pipe: %w", err)
 	}
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
+	stderrLimit := b.maxStdout
+	if stderrLimit <= 0 {
+		stderrLimit = 1 << 20 // 1 MiB default
+	}
+	stderr := &limitedWriter{limit: stderrLimit}
+	cmd.Stderr = stderr
 
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("exec: start: %w", err)
@@ -70,7 +94,11 @@ func (b *ExecBackend) GetSecret(ctx context.Context, ref string) ([]byte, error)
 		if ctx.Err() != nil {
 			return nil, fmt.Errorf("exec: command timed out")
 		}
-		return nil, fmt.Errorf("exec: %s: %w (stderr: %s)", b.command, err, stderr.String())
+		stderrMsg := stderr.String()
+		if b.maxStdout > 0 && int64(len(stderrMsg)) > b.maxStdout {
+			stderrMsg = stderrMsg[:b.maxStdout] + "...(truncated)"
+		}
+		return nil, fmt.Errorf("exec: %s: %w (stderr: %s)", b.command, err, stderrMsg)
 	}
 
 	return out.Bytes(), nil

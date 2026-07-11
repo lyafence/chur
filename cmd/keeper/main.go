@@ -6,6 +6,8 @@ import (
 	"net"
 	"os"
 
+	"golang.org/x/net/netutil"
+
 	"github.com/lyafence/chur/internal/keeper"
 	"github.com/lyafence/chur/internal/keeper/exec"
 	"github.com/lyafence/chur/internal/keeper/filesystem"
@@ -17,7 +19,11 @@ func main() {
 	ctx := context.Background()
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
 
-	cfg := keeper.ConfigFromEnv()
+	cfg, err := keeper.ConfigFromEnv()
+	if err != nil {
+		slog.ErrorContext(ctx, "invalid keeper config", "error", err)
+		os.Exit(1)
+	}
 
 	switch cfg.BackendType {
 	case "filesystem":
@@ -25,7 +31,7 @@ func main() {
 		if root == "" {
 			root = "/var/lib/chur-keeper/secrets"
 		}
-		cfg.Backend = filesystem.New(root)
+		cfg.Backend = filesystem.NewWithMaxSize(root, cfg.MaxSecretSize)
 
 	case "exec":
 		cmd := cfg.ExecCommand
@@ -56,6 +62,7 @@ func main() {
 		slog.ErrorContext(ctx, "keeper: listen failed", "addr", cfg.Listen, "error", err)
 		os.Exit(1)
 	}
+	listener = netutil.LimitListener(listener, cfg.MaxConcurrent)
 	defer listener.Close()
 
 	slog.InfoContext(ctx, "keeper configuration loaded",

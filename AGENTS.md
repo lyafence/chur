@@ -6,6 +6,7 @@
 |---------|-------------|
 | `make build` | Build all binaries (webhook + init + keeper) |
 | `make build-keeper` | Build chur-keeper only |
+| `make build-init-minimal` | Build chur-init without k8s provider |
 | `make build-init` | Build chur-init only |
 | `make build-webhook` | Build chur-webhook only |
 | `make fmt` | Format Go sources |
@@ -83,7 +84,8 @@ Read secret from /secrets/<ref> (tmpfs)
 - Secrets never appear in env vars of app container
 - Provider selection is annotation-driven, zero code changes
 - Factory pattern with lazy initialization. Optional providers are compiled only
-  when corresponding build tags are enabled.
+  when corresponding build tags are enabled (the `keeper` provider is the
+  exception — it is stdlib-only and always included).
 - All providers implement the same `SecretProvider` interface
 
 ## Design Philosophy
@@ -121,69 +123,70 @@ long-running background services unless they solve a demonstrated user problem.
 
 - **YAGNI** — don't add providers "just in case". Add when needed.
 - **Global state creep** — the provider registry is justified; any other global state needs documentation.
-- **SDK bloat** — prefer lightweight HTTP clients over full cloud SDKs where possible.
-  The `k8s` provider is an exception (requires `client-go`). For cloud secret stores
-  (AWS, GCP, Azure), prefer minimal HTTP implementations to keep the init binary
-  small. A secrets manager API typically needs only one operation — `GetSecret` —
-  which does not justify pulling in an entire cloud SDK.
+- **SDK bloat** — don't add cloud SDK dependencies to Go code. The `k8s` provider is
+  the only exception (requires `client-go`). For cloud secret stores (AWS, GCP, Azure,
+  Vault), the keeper's `exec` backend covers all of them — just pass a CLI command
+  (`aws secretsmanager`, `gcloud`, `az keyvault`, `vault read`) or a shell script.
+  A secrets manager API needs only one operation — `GetSecret` — which does not
+  justify pulling in an entire cloud SDK.
 
-## Roadmap
+## Current State
 
-### Phase 1: Core MVP — Base Providers + Webhook
+### Phase 1 ✅ — Core MVP (implemented)
 
-**1a: Provider Implementations + Unit Tests**
-- `env`: GetSecret reads `os.Getenv`. Test: set env var → get value.
-- `local`: GetSecret reads a file from disk. `CHUR_LOCAL_BASE_PATH` configures the
-  base directory (default `/etc/chur/secrets`). Test: temp file → read → cleanup.
-- `k8s`: GetSecret via InClusterConfig + client-go. Test: fake clientset (`k8s.io/client-go/testing`).
-- Exponential backoff retry — network may not be ready immediately in init containers.
+**Providers:**
+- `env`, `local`, `k8s`, `keeper` — all implemented, unit-tested, e2e-tested.
+- Exponential backoff retry in `cmd/init/main.go`.
+- Providers are registered via `init()` pattern; keeper is stdlib-only and always included.
 
-**1b: Webhook — Mutation Logic**
-- Full `MutatePod` implementation: parse annotations → JSON Patch (tmpfs + init container + mount).
-- TLS: self-signed cert for dev mode.
-- Test: unit-test JSON patches on raw Pod manifests (no K8s API needed).
+**Webhook:**
+- `MutatePod` parses `chur.io/*` annotations, injects tmpfs volume + chur-init init container + volume mounts.
+- Idempotent: guards against `reinvocationPolicy: IfNeeded` duplicates.
+- TLS: `server` and `mtls` modes, self-signed cert generation for dev.
 
-**1c: End-to-End with Kind**
-- `test/e2e/e2e_test.go`: Kind cluster → deploy webhook → deploy annotated Pod → verify secret in tmpfs.
-- Make target: `make e2e` (Kind up → test → cleanup).
+**chur-keeper (optional):**
+- Binary: `cmd/keeper/`, 10 MB stdlib-only.
+- Backends: `filesystem` and `exec` via `Backend` interface.
+- Providers: `internal/providers/keeper/` — HTTP client with mTLS.
+- Helm chart: `keeper.enabled=false`, conditional env injection.
+- E2E: `TestE2E_KeeperProvider` in `test/e2e/`.
 
-### Phase 2: Cloud Providers — AWS + GCP + Azure
+**CI/CD:**
+- GitHub Actions: `ci.yml` (lint → test → build + vuln), `release.yml` (Docker multi-arch + Helm chart).
+- Dependabot: gomod, docker, actions.
 
-**2a: AWS Provider** (`internal/providers/aws/`)
-- `aws-sdk-go-v2` (Secrets Manager), IRSA (sts.AssumeRoleProvider)
-- Build tag: `go build -tags aws` — SDK only in cloud builds
-- Test: LocalStack in docker-compose
+## Design Decisions
 
-**2b: GCP Provider** (`internal/providers/gcp/`)
-- GCP Secret Manager SDK, Workload Identity Federation
-- Test: fake GCP server
+**Cloud Secret Stores are NOT compiled into chur.**  
+The keeper's `exec` backend delegates to standard CLI tools:
 
-**2c: Azure Provider** (`internal/providers/azure/`)
-- `azure-sdk-for-go` (Key Vault), Managed Identity
-- Test: Azurite
+| Store | Command |
+|-------|---------|
+| AWS Secrets Manager | `aws secretsmanager get-secret-value --secret-id` |
+| GCP Secret Manager | `gcloud secrets versions access latest --secret` |
+| Azure Key Vault | `az keyvault secret show --name` |
+| HashiCorp Vault | `vault read -field=value` |
 
-### Phase 3: Optional Enhancements
+Rationale: `GetSecret` is one API call — not worth pulling in any cloud SDK.
 
-Additional runtime improvements or observability only if demonstrated user
-demand exists. No control-plane components unless they solve a real user
-problem.
+## Future Ideas
 
-Examples that may be considered later:
+Only if demonstrated demand:
 
+- Prometheus `/metrics` endpoint.
 - Sidecar hot-reload (inotify + polling).
-- Prometheus metrics endpoint (`/metrics`).
-- Advanced audit logging beyond structured JSON logs.
+- Advanced audit logging.
 
-### Phase Architecture
+## Architecture Overview
 
 ```
-Phase 1                Phase 2                Phase 3
+Phase 1 ✅             Phase 2                Phase 3
 ┌──────────────┐      ┌──────────────┐       ┌──────────────┐
-│  env         │      │  aws         │       │  optional    │
-│  local       │      │  gcp         │       │  runtime     │
-│  k8s         │ ───► │  azure       │ ───►  │  improvements│
-│  webhook     │      │  vault       │       │  (only if    │
-│  mutation    │      │  build tags  │       │  demand)     │
+│  env         │      │  cloud       │       │  optional    │
+│  local       │      │  secret      │       │  runtime     │
+│  k8s         │ ───► │  stores      │ ───►  │  improvements│
+│  keeper      │      │  (via exec)  │       │  (only if    │
+│  webhook     │      │              │       │  demand)     │
 └──────────────┘      └──────────────┘       └──────────────┘
 
 ## Release Workflow
@@ -197,5 +200,5 @@ Before preparing a release:
   - `make vuln`
   - `make e2e`
 
-Push a version tag (e.g. `v0.2.0`) to trigger the GitHub Actions release workflow.
+Push a version tag (e.g. `v0.3.0`) to trigger the GitHub Actions release workflow.
 ```

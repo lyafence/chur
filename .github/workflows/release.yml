@@ -48,6 +48,17 @@ jobs:
             ghcr.io/${{ github.repository_owner }}/chur-init:${{ github.ref_name }}
             ghcr.io/${{ github.repository_owner }}/chur-init:latest
 
+      - name: Build and push keeper
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile.keeper
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/chur-keeper:${{ github.ref_name }}
+            ghcr.io/${{ github.repository_owner }}/chur-keeper:latest
+
       - name: Update Chart.yaml version
         run: |
           VER="${GITHUB_REF_NAME#v}"

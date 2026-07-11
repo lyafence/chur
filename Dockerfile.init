@@ -5,7 +5,7 @@ ARG TARGETARCH
 ARG GOFLAGS=""
 WORKDIR /app
 COPY go.mod go.sum ./
-RUN go mod download
+RUN GOFLAGS= go mod download
 COPY . .
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build ${GOFLAGS} -ldflags="-s -w" -o chur-init ./cmd/init
 

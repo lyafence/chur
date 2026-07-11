@@ -1,8 +1,7 @@
 package keeper
 
 import (
-	"context"
-	"log/slog"
+	"fmt"
 	"os"
 	"strconv"
 	"time"
@@ -27,6 +26,7 @@ type Config struct {
 	BackendType   string
 	Backend       Backend
 	MaxSecretSize int64
+	MaxConcurrent int
 	ExecCommand   string
 	ExecTimeout   time.Duration
 	ExecMaxStdout int64
@@ -38,12 +38,13 @@ func DefaultConfig() *Config {
 		HealthListen:  ":9444",
 		TLSMode:       TLSModeSelfSigned,
 		MaxSecretSize: 1 << 20,
+		MaxConcurrent: 100,
 		ExecTimeout:   10 * time.Second,
 		ExecMaxStdout: 1 << 20,
 	}
 }
 
-func ConfigFromEnv() *Config {
+func ConfigFromEnv() (*Config, error) {
 	cfg := DefaultConfig()
 	if v := os.Getenv("CHUR_KEEPER_LISTEN"); v != "" {
 		cfg.Listen = v
@@ -74,10 +75,16 @@ func ConfigFromEnv() *Config {
 	if v := os.Getenv("CHUR_KEEPER_MAX_SECRET_SIZE"); v != "" {
 		n, err := bytesize.Parse(v)
 		if err != nil {
-			slog.ErrorContext(context.Background(), "invalid CHUR_KEEPER_MAX_SECRET_SIZE", "value", v, "error", err)
-			os.Exit(1)
+			return nil, fmt.Errorf("invalid CHUR_KEEPER_MAX_SECRET_SIZE %q: %w", v, err)
 		}
 		cfg.MaxSecretSize = n
+	}
+	if v := os.Getenv("CHUR_KEEPER_MAX_CONCURRENT"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n <= 0 {
+			return nil, fmt.Errorf("invalid CHUR_KEEPER_MAX_CONCURRENT %q: %w", v, err)
+		}
+		cfg.MaxConcurrent = n
 	}
 	if v := os.Getenv("CHUR_KEEPER_EXEC_COMMAND"); v != "" {
 		cfg.ExecCommand = v
@@ -92,5 +99,5 @@ func ConfigFromEnv() *Config {
 			cfg.ExecMaxStdout = int64(n)
 		}
 	}
-	return cfg
+	return cfg, nil
 }

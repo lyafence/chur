@@ -92,6 +92,10 @@ tls:
     issuerName: chur-selfsigned-issuer
     # tls.certManager.issuerKind is the kind of the issuer: "Issuer" (namespaced) or "ClusterIssuer" (cluster-scoped).
     issuerKind: Issuer
+    # tls.certManager.duration is the certificate validity period (default 8760h = 365d).
+    duration: 8760h
+    # tls.certManager.renewBefore is how long before expiry to renew (default 360h = 15d).
+    renewBefore: 360h
   helmGenerated:
     # tls.helmGenerated.validityDays is the certificate validity period in days.
     validityDays: 365
@@ -130,8 +134,24 @@ keeper:
     pullPolicy: IfNotPresent
   # keeper.tlsMode controls TLS mode: "self-signed" or "mtls".
   tlsMode: self-signed
-  # keeper.backend is the secret storage backend ("filesystem").
+  # keeper.backend is the secret storage backend ("filesystem" or "exec").
   backend: filesystem
+  # keeper.listen is the listen address for the keeper HTTPS endpoint.
+  listen: ":9443"
+  # keeper.healthListen is the listen address for keeper health probes.
+  healthListen: ":9444"
+  # keeper.maxSecretSize is the maximum secret size the keeper will serve.
+  maxSecretSize: "1Mi"
+  # keeper.maxConcurrent is the maximum number of concurrent requests.
+  maxConcurrent: 100
+  # keeper.fsRoot is the root directory for the filesystem backend.
+  fsRoot: "/var/lib/chur-keeper/secrets"
+  # keeper.execCommand is the command to execute (ref passed as argument). Required when backend=exec.
+  execCommand: ""
+  # keeper.execTimeout is the command execution timeout in seconds (default 10).
+  execTimeout: 10
+  # keeper.execMaxStdout is the maximum stdout bytes (default 1048576).
+  execMaxStdout: 1048576
   volume:
     # keeper.volume.hostPath is the hostPath volume for secret storage.
     hostPath:
@@ -141,14 +161,24 @@ keeper:
     # keeper.tls.existingSecret is the name of an existing TLS Secret for the keeper.
     # Required when tlsMode=mtls.
     existingSecret: ""
+    # keeper.tls.certPath is the path to the TLS certificate inside the keeper container.
+    certPath: "/etc/chur-keeper/tls/tls.crt"
+    # keeper.tls.keyPath is the path to the TLS key inside the keeper container.
+    keyPath: "/etc/chur-keeper/tls/tls.key"
   mtls:
     clientCA:
-      # keeper.mtls.clientCA.existingSecret is the name of a Secret containing the client CA.
+      # keeper.mtls.clientCA.existingSecret is the name of a Secret containing the CA bundle
+      # for verifying incoming mTLS client certificates.
       existingSecret: ""
-      # keeper.mtls.clientCA.existingConfigMap is the name of a ConfigMap containing the client CA.
+      # keeper.mtls.clientCA.existingConfigMap is an alternative to existingSecret.
+      # Mounts a ConfigMap containing the CA bundle for verifying mTLS client certs.
       existingConfigMap: ""
+      # keeper.mtls.clientCA.path is the mount path for the client CA file.
+      path: "/etc/chur-keeper/client-ca/ca.crt"
   clientTLS:
-    # keeper.clientTLS.existingSecret is the name of a Secret containing the client TLS cert.
+    # keeper.clientTLS.existingSecret mounts a Secret with tls.crt and tls.key into the
+    # keeper pod for its server identity (alternative to tls.existingSecret).
+    # For client-side certificates in chur-init, use extraVolumes + chur.io/provider-env.
     existingSecret: ""
   # keeper.extraVolumes is a list of extra volumes for the keeper pod.
   extraVolumes: []
@@ -159,7 +189,7 @@ keeper:
   service:
     # keeper.service.type is the Kubernetes Service type.
     type: ClusterIP
-    # keeper.service.port is the port the keeper gRPC service listens on.
+    # keeper.service.port is the port the keeper HTTPS service listens on.
     port: 9443
   # keeper.resources is the resource requests and limits for the keeper container.
   resources: {}

@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -11,11 +13,12 @@ import (
 	"syscall"
 	"time"
 
+	"golang.org/x/net/netutil"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/utils/ptr"
 
-	_ "github.com/lyafence/chur/internal/providers/env"
-	_ "github.com/lyafence/chur/internal/providers/keeper"
-	_ "github.com/lyafence/chur/internal/providers/local"
+	"github.com/lyafence/chur/internal/tls"
 	"github.com/lyafence/chur/internal/webhook"
 )
 
@@ -41,14 +44,41 @@ func main() {
 	if v := os.Getenv("CHUR_ALLOWED_NAMESPACES"); v != "" {
 		for _, ns := range strings.Split(v, ",") {
 			ns = strings.TrimSpace(ns)
-			if ns != "" {
-				cfg.AllowedNamespaces = append(cfg.AllowedNamespaces, ns)
+			if ns == "" {
+				continue
 			}
+			if err := validateDNS1123Label(ns); err != nil {
+				slog.ErrorContext(ctx, "invalid namespace in CHUR_ALLOWED_NAMESPACES",
+					"namespace", ns, "error", err)
+				os.Exit(1)
+			}
+			cfg.AllowedNamespaces = append(cfg.AllowedNamespaces, ns)
 		}
 	}
 
 	if v := os.Getenv("CHUR_INIT_IMAGE"); v != "" {
 		cfg.InitImage = v
+	}
+	if v := os.Getenv("CHUR_INIT_IMAGE_PULL_POLICY"); v != "" {
+		cfg.InitImagePullPolicy = corev1.PullPolicy(v)
+	}
+	if v := os.Getenv("CHUR_RUN_AS_USER"); v != "" {
+		n, err := strconv.ParseInt(v, 10, 64)
+		if err == nil {
+			cfg.RunAsUser = n
+		}
+	}
+	if v := os.Getenv("CHUR_RUN_AS_GROUP"); v != "" {
+		n, err := strconv.ParseInt(v, 10, 64)
+		if err == nil {
+			cfg.RunAsGroup = ptr.To(n)
+		}
+	}
+	if v := os.Getenv("CHUR_FS_GROUP"); v != "" {
+		n, err := strconv.ParseInt(v, 10, 64)
+		if err == nil {
+			cfg.FSGroup = n
+		}
 	}
 	if v := os.Getenv("CHUR_MAX_SECRET_SIZE"); v != "" {
 		if _, err := resource.ParseQuantity(v); err != nil {
@@ -70,8 +100,15 @@ func main() {
 	}
 
 	cfg.KeeperServiceName = os.Getenv("CHUR_KEEPER_SERVICE_NAME")
-	cfg.KeeperServiceNamespace = firstNonEmpty(os.Getenv("CHUR_KEEPER_SERVICE_NAMESPACE"), "chur")
+	cfg.KeeperServiceNamespace = firstNonEmpty(os.Getenv("CHUR_KEEPER_SERVICE_NAMESPACE"), "chur-system")
 	cfg.KeeperServicePort = firstNonEmpty(os.Getenv("CHUR_KEEPER_SERVICE_PORT"), "9443")
+
+	maxSize, err := resource.ParseQuantity(cfg.MaxSecretSize)
+	if err == nil && cfg.VolumeSizeLimit.Value() < maxSize.Value() {
+		slog.ErrorContext(ctx, "CHUR_VOLUME_SIZE_LIMIT is smaller than CHUR_MAX_SECRET_SIZE",
+			"volume_size_limit", cfg.VolumeSizeLimit.String(), "max_secret_size", cfg.MaxSecretSize)
+		os.Exit(1)
+	}
 
 	srv, err := webhook.NewServer(cfg)
 	if err != nil {
@@ -83,6 +120,13 @@ func main() {
 	if listenAddr == "" {
 		listenAddr = ":8443"
 	}
+
+	listener, err := net.Listen("tcp", listenAddr)
+	if err != nil {
+		slog.ErrorContext(ctx, "failed to listen", "addr", listenAddr, "error", err)
+		os.Exit(1)
+	}
+	listener = netutil.LimitListener(listener, cfg.MaxConcurrent)
 	healthAddr := os.Getenv("CHUR_HEALTH_LISTEN")
 	if healthAddr == "" {
 		healthAddr = ":8080"
@@ -119,8 +163,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	certFile := "/etc/chur/tls/tls.crt"
-	keyFile := "/etc/chur/tls/tls.key"
+	certFile := firstNonEmpty(os.Getenv("CHUR_TLS_CERT_PATH"), "/etc/chur/tls/tls.crt")
+	keyFile := firstNonEmpty(os.Getenv("CHUR_TLS_KEY_PATH"), "/etc/chur/tls/tls.key")
 
 	if _, err := os.Stat(certFile); os.IsNotExist(err) {
 		if os.Getenv("CHUR_TLS_AUTO_GENERATE") == "1" {
@@ -142,7 +186,7 @@ func main() {
 			}()
 			certFile = tmpDir + "/tls.crt"
 			keyFile = tmpDir + "/tls.key"
-			if err := webhook.GenerateTLSCert(dnsName, certFile, keyFile); err != nil {
+			if err := tls.GenerateTLSCert(dnsName, certFile, keyFile); err != nil {
 				slog.ErrorContext(ctx, "failed to generate dev TLS cert", "error", err)
 				os.Exit(1)
 			}
@@ -186,25 +230,32 @@ func main() {
 		"max_concurrent", cfg.MaxConcurrent,
 	)
 
+	srvErr := make(chan error, 1)
+
 	go func() {
 		slog.InfoContext(ctx, "starting chur-webhook admission",
-			"version", version, "addr", httpSrv.Addr, "tls_mode", tlsMode)
-		if err := httpSrv.ListenAndServeTLS(certFile, keyFile); err != nil && err != http.ErrServerClosed {
-			slog.ErrorContext(ctx, "admission server error", "error", err)
-			cancel()
+			"version", version, "addr", listenAddr, "tls_mode", tlsMode)
+		if err := httpSrv.ServeTLS(listener, certFile, keyFile); err != nil && err != http.ErrServerClosed {
+			srvErr <- fmt.Errorf("admission server: %w", err)
+			return
 		}
 	}()
 
 	go func() {
 		slog.InfoContext(ctx, "starting chur-webhook health", "addr", healthSrv.Addr)
 		if err := healthSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			slog.ErrorContext(ctx, "health server error", "error", err)
-			cancel()
+			srvErr <- fmt.Errorf("health server: %w", err)
+			return
 		}
 	}()
 
-	<-ctx.Done()
-	slog.InfoContext(ctx, "shutting down...")
+	select {
+	case <-ctx.Done():
+		slog.InfoContext(ctx, "shutting down...")
+	case err := <-srvErr:
+		slog.ErrorContext(ctx, "server error, shutting down", "error", err)
+		cancel()
+	}
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer shutdownCancel()
@@ -215,6 +266,16 @@ func main() {
 	if err := httpSrv.Shutdown(shutdownCtx); err != nil {
 		slog.ErrorContext(ctx, "admission server shutdown error", "error", err)
 	}
+
+	// If a server error was captured, exit non-zero so K8s restarts the pod.
+	select {
+	case err := <-srvErr:
+		if err != nil {
+			slog.ErrorContext(ctx, "exiting with error", "error", err)
+			os.Exit(1)
+		}
+	default:
+	}
 }
 
 func firstNonEmpty(a, b string) string {
@@ -222,4 +283,19 @@ func firstNonEmpty(a, b string) string {
 		return a
 	}
 	return b
+}
+
+func validateDNS1123Label(s string) error {
+	if len(s) == 0 || len(s) > 63 {
+		return fmt.Errorf("must be 1-63 characters long")
+	}
+	for i, r := range s {
+		if (r < 'a' || r > 'z') && (r < '0' || r > '9') && r != '-' {
+			return fmt.Errorf("invalid character %q at position %d", r, i)
+		}
+	}
+	if s[0] == '-' || s[len(s)-1] == '-' {
+		return fmt.Errorf("must not start or end with '-'")
+	}
+	return nil
 }

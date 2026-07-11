@@ -4,6 +4,8 @@ import (
 	"crypto/tls"
 	"encoding/pem"
 	"testing"
+
+	churtls "github.com/lyafence/chur/internal/tls"
 )
 
 func TestTLSConfig_Server_AllowsNoClientCert(t *testing.T) {
@@ -25,7 +27,7 @@ func TestTLSConfig_Server_AllowsNoClientCert(t *testing.T) {
 
 func TestTLSConfig_MTLS_RequiresClientCert(t *testing.T) {
 	t.Parallel()
-	caPEM, _, err := GenerateCertMemory("test-ca")
+	caPEM, _, err := churtls.GenerateCertMemory("test-ca")
 	if err != nil {
 		t.Fatalf("generate CA: %v", err)
 	}
@@ -68,7 +70,7 @@ func TestTLSConfig_MTLS_WithInvalidCAPEM_ReturnsError(t *testing.T) {
 
 func TestTLSConfig_MTLS_ClientCAPoolNotEmpty(t *testing.T) {
 	t.Parallel()
-	caPEM, _, err := GenerateCertMemory("test-ca")
+	caPEM, _, err := churtls.GenerateCertMemory("test-ca")
 	if err != nil {
 		t.Fatalf("generate CA: %v", err)
 	}
@@ -90,7 +92,7 @@ func TestTLSConfig_MTLS_ClientCAPoolNotEmpty(t *testing.T) {
 
 func TestTLSConfig_Server_CAPEMIgnored(t *testing.T) {
 	t.Parallel()
-	caPEM, _, err := GenerateCertMemory("test-ca")
+	caPEM, _, err := churtls.GenerateCertMemory("test-ca")
 	if err != nil {
 		t.Fatalf("generate CA: %v", err)
 	}

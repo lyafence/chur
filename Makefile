@@ -61,7 +61,7 @@ docker-init:
 	$(DOCKER) build --platform $(TARGETOS)/$(TARGETARCH) \
 		--build-arg TARGETOS=$(TARGETOS) \
 		--build-arg TARGETARCH=$(TARGETARCH) \
-		--build-arg GOFLAGS="-tags provider_k8s" \
+		--build-arg GOFLAGS="-tags=provider_k8s" \
 		-t $(APP_NAME)-init:$(VERSION) -f Dockerfile.init .
 
 docker-keeper:

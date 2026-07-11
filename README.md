@@ -16,8 +16,9 @@ chur is a Kubernetes admission webhook that intercepts Pod creation and
 injects secrets directly into container memory (tmpfs), bypassing application
 environment variables and Kubernetes Secret volumes. Secrets are sourced from
 environment variables, local files on the node, or Kubernetes Secrets via a
-pluggable provider architecture. Additional cloud providers (AWS, GCP, Azure,
-Vault) are planned for future releases.
+pluggable provider architecture. Cloud secret stores (AWS, GCP, Azure, Vault)
+are covered by the optional `chur-keeper` gateway with its `exec` backend —
+no Go SDK dependencies needed.
 
 ## Architecture
 
@@ -30,25 +31,29 @@ Vault) are planned for future releases.
                          │ chur-webhook │  ← MutatingWebhookConfiguration
                          └──────┬───────┘
                                 │ JSON patch: add tmpfs volume + init container
-                         ┌──────▼───────┐
-                         │    Pod        │
-                         │ ┌──────────┐ │
-                         │ │chur-init │ │  ← reads secret from provider, writes to tmpfs
-                         │ └──────────┘ │
-                         │ ┌──────────┐ │
-                         │ │  app     │ │  ← reads secret from tmpfs file
-                         │ └──────────┘ │
-                         └──────────────┘
+                          ┌──────▼───────┐
+                          │    Pod        │
+                          │ ┌──────────┐ │
+                          │ │chur-init │ │  ← reads secret from provider, writes to tmpfs
+                          │ │    │      │ │
+                          │ │    └──(keeper)──► chur-keeper (optional)
+                          │ │                  ├── filesystem backend
+                          │ │                  └── exec backend
+                          │ └──────────┘ │
+                          │ ┌──────────┐ │
+                          │ │  app     │ │  ← reads secret from tmpfs file
+                          │ └──────────┘ │
+                          └──────────────┘
 ```
 
 ## Why chur?
 
-| chur | Kubernetes Secret volume |
-|------|--------------------------|
-| In-memory delivery | Secret volume |
-| No application env vars | Env vars optional |
-| Admission-based injection | Native volume mount |
-| Lightweight | Kubernetes built-in |
+| Feature | chur | Kubernetes Secret volume |
+|---------|------|--------------------------|
+| Delivery | In-memory tmpfs | File on disk |
+| Env vars in app | Never injected | Optional |
+| Injection | Admission webhook | Native volume mount |
+| Overhead | Init container only | kubelet watcher |
 
 ## Security
 
@@ -67,7 +72,7 @@ non-goals.
 
 ## Prerequisites
 
-- Kubernetes cluster 1.28+
+- Kubernetes 1.28+ cluster
 - `helm` 3.x
 - `kubectl` with access to the cluster
 
@@ -77,23 +82,40 @@ non-goals.
 # Add the repository and install the webhook
 helm repo add chur https://lyafence.github.io/chur
 helm repo update
+
+# Install into a dedicated namespace (RBAC resources are created here)
 helm install chur chur/chur --namespace chur-system --create-namespace --wait
 
-# Deploy a test Pod and verify injection
-kubectl create secret generic my-secret --from-literal=token=hello
-kubectl run test-pod --image=busybox --restart=Never \
+# For the optional chur-keeper, enable it at install time:
+# helm install chur chur/chur --namespace chur-system --create-namespace --wait \
+#   --set keeper.enabled=true
+
+# Deploy a test Pod in the same namespace and verify injection
+kubectl -n chur-system create secret generic my-secret --from-literal=token=hello
+kubectl -n chur-system run test-pod --image=busybox --restart=Never \
   --annotations=chur.io/provider=k8s \
   --annotations=chur.io/secret-ref=my-secret \
   --annotations=chur.io/secret-key=token \
   --serviceaccount=chur-init \
   --command -- sleep 9999
-kubectl exec test-pod -- cat /secrets/my-secret
+kubectl -n chur-system exec test-pod -- cat /secrets/my-secret
 ```
 
 The default TLS mode uses cert-manager. For development without cert-manager
 (`tls.provider=helmGenerated`) or other TLS options, see
 [`charts/chur/values.yaml`](charts/chur/values.yaml) and the
 [Helm chart README](charts/chur/README.md).
+
+To try the optional `chur-keeper` gateway (install with `--set keeper.enabled=true`):
+
+```bash
+# Deploy a test Pod with the keeper provider
+kubectl -n chur-system run test-keeper --image=busybox --restart=Never \
+  --annotations=chur.io/provider=keeper \
+  --annotations=chur.io/secret-ref=prod/db/password \
+  --annotations=chur.io/keeper-skip-verify=true \
+  --command -- sleep 9999
+```
 
 ## Usage
 
@@ -128,10 +150,12 @@ The application reads the secret from `/secrets/<ref>` (e.g. `/secrets/db-creden
 
 | Annotation | Description | Required |
 |------------|-------------|----------|
-| `chur.io/provider` | Secret backend: `env`, `local`, or `k8s` | Yes |
-| `chur.io/secret-ref` | Reference to the secret (env var, file name, or k8s Secret name) | Yes |
-| `chur.io/secret-key` | Extract a specific key from a JSON secret value | No |
+| `chur.io/provider` | Secret backend: `env`, `local`, `k8s`, or `keeper` | Yes |
+| `chur.io/secret-ref` | Reference to the secret (env var, file name, k8s Secret name, or keeper path like `prod/db/password`) | Yes |
+| `chur.io/secret-key` | Key within the Kubernetes Secret's data map (used by the `k8s` provider) | No |
 | `chur.io/mount-path` | Path to mount the tmpfs volume (default: `/secrets`) | No |
+| `chur.io/keeper-skip-verify` | Skip TLS verification when calling `chur-keeper` (dev only, `"true"`) | No |
+| `chur.io/provider-env` | Extra `CHUR_*` env vars for chur-init, JSON format: `{"KEY":"VAL"}` | No |
 
 ## Providers
 
@@ -140,12 +164,10 @@ The application reads the secret from `/secrets/<ref>` (e.g. `/secrets/db-creden
 | `env`      | Environment variables (dev)      | 1 ✅  |
 | `local`    | Files on host (bare-metal)       | 1 ✅  |
 | `k8s`      | Kubernetes Secrets               | 1 ✅  |
-| `aws`      | AWS Secrets Manager              | 2 🚧  |
-| `gcp`      | GCP Secret Manager               | 2 🚧  |
-| `azure`    | Azure Key Vault                  | 2 🚧  |
-| `vault`    | HashiCorp Vault                  | 2 🚧  |
+| `keeper`   | Remote gateway (filesystem/exec)  | 1 ✅  |
 
-_Phase 1 providers are implemented and tested. Phase 2 providers are planned._
+_Phase 1 providers are implemented and tested. Cloud secret stores (AWS, GCP, Azure,
+Vault) are covered by chur-keeper's `exec` backend — no Go SDK dependencies needed._
 
 ## chur-keeper (optional)
 
@@ -174,6 +196,27 @@ be supplied through annotations:
 In production, deploy keeper with mTLS and use `chur.io/provider-env` to point
 `chur-init` at mounted client certificates.
 
+To integrate with cloud secret stores (AWS Secrets Manager, GCP Secret Manager,
+Azure Key Vault, HashiCorp Vault), use the `exec` backend — chur-keeper runs
+the specified CLI command with the ref as an argument. For example:
+
+The `exec` backend runs a single command — `exec.Command` does not invoke a shell,
+so `CHUR_KEEPER_EXEC_COMMAND` must be a single executable without shell syntax.
+
+Create a wrapper script (e.g. `/usr/local/bin/get-aws-secret`):
+
+```bash
+#!/bin/sh
+aws secretsmanager get-secret-value --secret-id "$1" --query SecretString --output text
+```
+
+Then configure:
+
+```bash
+CHUR_KEEPER_BACKEND=exec
+CHUR_KEEPER_EXEC_COMMAND=/usr/local/bin/get-aws-secret
+```
+
 ### Local provider in Kubernetes
 
 The `local` provider reads secret files from `CHUR_LOCAL_BASE_PATH`
@@ -191,17 +234,25 @@ in-memory `emptyDir` volume at `/secrets` (or the path specified by
 Main environment variables. For all other variables (TLS auto-generation, mTLS,
 init container configuration), see [`.env.example`](.env.example).
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `CHUR_LISTEN` | `:8443` | Webhook listen address (admission) |
-| `CHUR_HEALTH_LISTEN` | `:8080` | Webhook listen address (health probes) |
-| `CHUR_TLS_MODE` | `server` | TLS mode: `server` or `mtls` |
-| `CHUR_VOLUME_SIZE_LIMIT` | `10Mi` | Max size of tmpfs volume per pod |
-| `CHUR_ALLOWED_NAMESPACES` | (all) | Comma-separated allowlist of namespaces |
-| `CHUR_INIT_IMAGE` | `ghcr.io/lyafence/chur-init:latest` | Init container image |
-| `CHUR_PROVIDER` | `env` | Secret provider: `env`, `local`, `k8s` |
-| `CHUR_MAX_SECRET_SIZE` | `1Mi` | Max secret size in init container |
-| `CHUR_MAX_CONCURRENT` | `100` | Maximum concurrent admission review requests |
+| Variable | Default | Scope | Description |
+|----------|---------|-------|-------------|
+| `CHUR_LISTEN` | `:8443` | webhook | Listen address (admission) |
+| `CHUR_HEALTH_LISTEN` | `:8080` | webhook | Listen address (health probes) |
+| `CHUR_TLS_MODE` | `server` | webhook | TLS mode: `server` or `mtls` |
+| `CHUR_VOLUME_SIZE_LIMIT` | `10Mi` | webhook | Max size of tmpfs volume per pod |
+| `CHUR_ALLOWED_NAMESPACES` | (all) | webhook | Comma-separated allowlist |
+| `CHUR_INIT_IMAGE` | `ghcr.io/lyafence/chur-init:latest` | webhook | Init container image |
+| `CHUR_MAX_CONCURRENT` | `100` | webhook | Max concurrent admission reviews |
+| `CHUR_PROVIDER` | `env` | init | Secret provider name |
+| `CHUR_MAX_SECRET_SIZE` | `1Mi` | init | Max secret size |
+| `CHUR_KEEPER_URL` | `https://chur-keeper:9443` | init | Keeper service URL (auto-injected) |
+| `CHUR_KEEPER_LISTEN` | `:9443` | keeper | HTTPS listen address |
+| `CHUR_KEEPER_HEALTH_LISTEN` | `:9444` | keeper | Health endpoint listen address |
+| `CHUR_KEEPER_TLS_MODE` | `self-signed` | keeper | TLS mode: `self-signed` or `mtls` |
+| `CHUR_KEEPER_BACKEND` | `filesystem` | keeper | Backend type: `filesystem` or `exec` |
+| `CHUR_KEEPER_MAX_SECRET_SIZE` | `1Mi` | keeper | Maximum response size |
+| `CHUR_KEEPER_EXEC_COMMAND` | — | keeper | Command to execute (exec backend) |
+| `CHUR_KEEPER_BACKEND_FS_ROOT` | `/var/lib/chur-keeper/secrets` | keeper | Root directory (filesystem backend) |
 
 ## RBAC Requirements
 

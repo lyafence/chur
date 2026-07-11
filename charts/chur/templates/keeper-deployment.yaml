@@ -24,15 +24,15 @@ spec:
           imagePullPolicy: {{ .Values.keeper.image.pullPolicy }}
           command: ["/chur-keeper"]
           ports:
-            - containerPort: 9443
+            - containerPort: {{ .Values.keeper.listen | toString | splitList ":" | last | atoi | default 9443 }}
               name: keeper
-            - containerPort: 9444
+            - containerPort: {{ .Values.keeper.healthListen | toString | splitList ":" | last | atoi | default 9444 }}
               name: health
           env:
             - name: CHUR_KEEPER_LISTEN
-              value: ":9443"
+              value: "{{ .Values.keeper.listen }}"
             - name: CHUR_KEEPER_HEALTH_LISTEN
-              value: ":9444"
+              value: "{{ .Values.keeper.healthListen }}"
             - name: CHUR_KEEPER_TLS_DNS_NAME
               value: "{{ include "chur.fullname" . }}-keeper.{{ .Release.Namespace }}.svc"
             - name: CHUR_KEEPER_TLS_MODE
@@ -40,16 +40,34 @@ spec:
             - name: CHUR_KEEPER_BACKEND
               value: {{ .Values.keeper.backend | quote }}
             - name: CHUR_KEEPER_MAX_SECRET_SIZE
-              value: "1Mi"
+              value: "{{ .Values.keeper.maxSecretSize }}"
+            - name: CHUR_KEEPER_MAX_CONCURRENT
+              value: "{{ .Values.keeper.maxConcurrent }}"
+            - name: CHUR_KEEPER_BACKEND_FS_ROOT
+              value: {{ .Values.keeper.fsRoot | default "/var/lib/chur-keeper/secrets" | quote }}
+          {{- if eq .Values.keeper.backend "exec" }}
+            - name: CHUR_KEEPER_EXEC_COMMAND
+              value: {{ .Values.keeper.execCommand | quote }}
+            - name: CHUR_KEEPER_EXEC_TIMEOUT
+              value: {{ .Values.keeper.execTimeout | default 10 | quote }}
+            - name: CHUR_KEEPER_EXEC_MAX_STDOUT
+              value: {{ .Values.keeper.execMaxStdout | default 1048576 | quote }}
+          {{- end }}
           {{- if eq .Values.keeper.tlsMode "mtls" }}
             - name: CHUR_KEEPER_TLS_CERT
-              value: "/etc/chur-keeper/tls/tls.crt"
+              value: {{ .Values.keeper.tls.certPath | default "/etc/chur-keeper/tls/tls.crt" | quote }}
             - name: CHUR_KEEPER_TLS_KEY
-              value: "/etc/chur-keeper/tls/tls.key"
+              value: {{ .Values.keeper.tls.keyPath | default "/etc/chur-keeper/tls/tls.key" | quote }}
           {{- end }}
-          {{- if and (eq .Values.keeper.tlsMode "mtls") .Values.keeper.mtls.clientCA.existingSecret }}
+          {{- if or .Values.keeper.mtls.clientCA.existingSecret .Values.keeper.mtls.clientCA.existingConfigMap }}
             - name: CHUR_KEEPER_TLS_CLIENT_CA
-              value: "/etc/chur-keeper/client-ca/ca.crt"
+              value: {{ .Values.keeper.mtls.clientCA.path | default "/etc/chur-keeper/client-ca/ca.crt" | quote }}
+          {{- end }}
+          {{- if and .Values.keeper.clientTLS.existingSecret (ne .Values.keeper.tlsMode "mtls") }}
+            - name: CHUR_KEEPER_TLS_CERT
+              value: "/etc/chur-keeper/client-tls/tls.crt"
+            - name: CHUR_KEEPER_TLS_KEY
+              value: "/etc/chur-keeper/client-tls/tls.key"
           {{- end }}
           {{- with .Values.keeper.extraEnv }}
             {{- toYaml . | nindent 12 }}
@@ -66,6 +84,16 @@ spec:
           {{- if and (eq .Values.keeper.tlsMode "mtls") .Values.keeper.mtls.clientCA.existingSecret }}
             - name: client-ca
               mountPath: /etc/chur-keeper/client-ca
+              readOnly: true
+          {{- end }}
+          {{- if and (eq .Values.keeper.tlsMode "mtls") .Values.keeper.mtls.clientCA.existingConfigMap }}
+            - name: client-ca
+              mountPath: /etc/chur-keeper/client-ca
+              readOnly: true
+          {{- end }}
+          {{- if .Values.keeper.clientTLS.existingSecret }}
+            - name: client-tls
+              mountPath: /etc/chur-keeper/client-tls
               readOnly: true
           {{- end }}
           {{- with .Values.keeper.extraVolumeMounts }}
@@ -109,6 +137,18 @@ spec:
         - name: client-ca
           secret:
             secretName: {{ .Values.keeper.mtls.clientCA.existingSecret }}
+            defaultMode: 0444
+      {{- end }}
+      {{- if and (eq .Values.keeper.tlsMode "mtls") .Values.keeper.mtls.clientCA.existingConfigMap }}
+        - name: client-ca
+          configMap:
+            name: {{ .Values.keeper.mtls.clientCA.existingConfigMap }}
+            defaultMode: 0444
+      {{- end }}
+      {{- if .Values.keeper.clientTLS.existingSecret }}
+        - name: client-tls
+          secret:
+            secretName: {{ .Values.keeper.clientTLS.existingSecret }}
             defaultMode: 0444
       {{- end }}
       {{- with .Values.keeper.extraVolumes }}
