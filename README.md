@@ -1,11 +1,11 @@
-# Chur Helm Charts
+# chur Helm Charts
 
 _Lightweight in-memory secret injection for Kubernetes_
 
 [![GitHub release](https://img.shields.io/github/v/release/lyafence/chur?style=flat-square)](https://github.com/lyafence/chur/releases)
 [![License](https://img.shields.io/github/license/lyafence/chur?style=flat-square)](https://github.com/lyafence/chur/blob/main/LICENSE)
 
-This is the Helm chart repository for [Chur](https://github.com/lyafence/chur).
+This is the Helm chart repository for [chur](https://github.com/lyafence/chur).
 
 ## Quick Start
 
