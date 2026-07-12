@@ -1,8 +1,13 @@
 # chur
 
-> **Status:** Alpha (stabilization in progress). API may change without notice.
+> **Status:** Beta. The core architecture is considered stable, but APIs,
+> configuration, and operational details may still change before v1.0.
+> Feedback and production-like testing are welcome.
 
-![Status](https://img.shields.io/badge/status-alpha-yellow)
+![Status](https://img.shields.io/badge/status-beta-yellow)
+![Go](https://img.shields.io/badge/go-1.26.4-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
+![Release](https://img.shields.io/github/v/release/lyafence/chur)
 
 **In-memory secret delivery for Kubernetes.**  
 
