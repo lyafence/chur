@@ -2,6 +2,7 @@
 
 _Lightweight in-memory secret injection for Kubernetes_
 
+[![Status](https://img.shields.io/badge/status-beta-yellow?style=flat-square)](https://github.com/lyafence/chur/releases)
 [![GitHub release](https://img.shields.io/github/v/release/lyafence/chur?style=flat-square)](https://github.com/lyafence/chur/releases)
 [![License](https://img.shields.io/github/license/lyafence/chur?style=flat-square)](https://github.com/lyafence/chur/blob/main/LICENSE)
 
