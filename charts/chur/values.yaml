@@ -185,6 +185,9 @@ keeper:
   extraVolumeMounts: []
   # keeper.extraEnv is a list of extra environment variables for the keeper container.
   extraEnv: []
+  # keeper.extraInitContainers is a list of extra init containers for the keeper pod.
+  # Useful for installing CLI tools (aws, vault, gcloud) in a shared emptyDir.
+  extraInitContainers: []
   service:
     # keeper.service.type is the Kubernetes Service type.
     type: ClusterIP

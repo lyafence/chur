@@ -492,6 +492,11 @@
           },
           "description": "Extra environment variables for the keeper container"
         },
+        "extraInitContainers": {
+          "type": "array",
+          "items": { "type": "object" },
+          "description": "Extra init containers for the keeper pod (e.g. install CLI tools)"
+        },
         "service": {
           "type": "object",
           "additionalProperties": false,

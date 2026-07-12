@@ -98,7 +98,38 @@ The `keeper` section controls the optional `chur-keeper` deployment:
 | `keeper.extraVolumes` | `[]` | Extra volumes for the keeper pod |
 | `keeper.extraVolumeMounts` | `[]` | Extra volume mounts for the keeper container |
 | `keeper.extraEnv` | `[]` | Extra env vars for the keeper container |
+| `keeper.extraInitContainers` | `[]` | Extra init containers for the keeper pod. Useful for installing CLI tools (`vault`, `aws`, `gcloud`) in a shared emptyDir before keeper starts |
 | `keeper.resources` | `{}` | Keeper container resource limits |
+
+### extraInitContainers
+
+When the exec backend needs a tool not present in the distroless keeper image,
+use `extraInitContainers` to provide it via a shared emptyDir before keeper
+starts:
+
+```yaml
+keeper:
+  enabled: true
+  backend: exec
+  execCommand: /usr/local/bin/helper
+  extraInitContainers:
+    - name: prepare-helper
+      image: your-helper-image
+      command:
+        - sh
+        - -c
+        - |
+          # Prepare /shared/helper here (download, copy, or generate)
+      volumeMounts:
+        - name: shared-bin
+          mountPath: /shared
+  extraVolumes:
+    - name: shared-bin
+      emptyDir: {}
+  extraVolumeMounts:
+    - name: shared-bin
+      mountPath: /usr/local/bin
+```
 
 When `keeper.enabled=true`, the webhook automatically injects `CHUR_KEEPER_URL`
 into every `chur-init` container. Use `chur.io/provider: keeper` in your Pod

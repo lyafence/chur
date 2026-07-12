@@ -29,6 +29,18 @@ pluggable provider architecture. Cloud secret stores (AWS, GCP, Azure, Vault)
 are covered by the optional `chur-keeper` gateway with its `exec` backend —
 no Go SDK dependencies needed.
 
+## Is chur for me?
+
+**Use chur if:**
+- You want to deliver secrets through tmpfs — never on disk or in env vars.
+- You want applications to be unaware of secret backends.
+- You need a lightweight, Kubernetes-native way to get secrets into memory.
+
+**Don't use chur if:**
+- Kubernetes Secret volumes already satisfy your requirements.
+- You need automatic secret rotation (restart the Pod today).
+- You already use a CSI driver successfully.
+
 ## Architecture
 
 ```
@@ -54,15 +66,6 @@ no Go SDK dependencies needed.
                           │ └──────────┘ │
                           └──────────────┘
 ```
-
-## Why chur?
-
-| Feature | chur | Kubernetes Secret volume |
-|---------|------|--------------------------|
-| Delivery | In-memory tmpfs | File on disk |
-| Env vars in app | Never injected | Optional |
-| Injection | Admission webhook | Native volume mount |
-| Overhead | Init container only | kubelet watcher |
 
 ## Security
 
@@ -108,23 +111,14 @@ kubectl -n chur-system run test-pod --image=busybox --restart=Never \
   --serviceaccount=chur-init \
   --command -- sleep 9999
 kubectl -n chur-system exec test-pod -- cat /secrets/my-secret
+# Expected output:
+# hello
 ```
 
 The default TLS mode uses cert-manager. For development without cert-manager
 (`tls.provider=helmGenerated`) or other TLS options, see
 [`charts/chur/values.yaml`](charts/chur/values.yaml) and the
 [Helm chart README](charts/chur/README.md).
-
-To try the optional `chur-keeper` gateway (install with `--set keeper.enabled=true`):
-
-```bash
-# Deploy a test Pod with the keeper provider
-kubectl -n chur-system run test-keeper --image=busybox --restart=Never \
-  --annotations=chur.io/provider=keeper \
-  --annotations=chur.io/secret-ref=prod/db/password \
-  --annotations=chur.io/keeper-skip-verify=true \
-  --command -- sleep 9999
-```
 
 ## Usage
 
@@ -168,17 +162,24 @@ The application reads the secret from `/secrets/<ref>` (e.g. `/secrets/db-creden
 
 ## Providers
 
-| Provider   | Backend                          | Phase |
-|------------|----------------------------------|-------|
-| `env`      | Environment variables (dev)      | 1 ✅  |
-| `local`    | Files on host (bare-metal)       | 1 ✅  |
-| `k8s`      | Kubernetes Secrets               | 1 ✅  |
-| `keeper`   | Remote gateway (filesystem/exec)  | 1 ✅  |
+| Provider   | Backend                          |
+|------------|----------------------------------|
+| `env`      | Environment variables (dev)      |
+| `local`    | Files on host (bare-metal)       |
+| `k8s`      | Kubernetes Secrets               |
+| `keeper`   | Remote gateway (filesystem/exec)  |
 
-_Phase 1 providers are implemented and tested. Cloud secret stores (AWS, GCP, Azure,
-Vault) are covered by chur-keeper's `exec` backend — no Go SDK dependencies needed._
+The `local` provider reads secret files from `CHUR_LOCAL_BASE_PATH`
+(default `/etc/chur/secrets`). When the provider is `local`, the webhook
+automatically mounts the base directory as a read-only `hostPath` volume into
+the `chur-init` container. You only need to ensure the files exist on the node
+at the expected path.
 
-## chur-keeper (optional)
+The secret is still delivered to the application container through the
+in-memory `emptyDir` volume at `/secrets` (or the path specified by
+`chur.io/mount-path`).
+
+## Optional: chur-keeper
 
 `chur-keeper` is an optional stateless HTTPS gateway. It fetches secrets from a
 configurable backend — it does not store them, cache them, or authenticate
@@ -206,38 +207,12 @@ be supplied through annotations:
 In production, deploy keeper with mTLS and use `chur.io/provider-env` to point
 `chur-init` at mounted client certificates.
 
-To integrate with cloud secret stores (AWS Secrets Manager, GCP Secret Manager,
-Azure Key Vault, HashiCorp Vault), use the `exec` backend — chur-keeper runs
-the specified CLI command with the ref as an argument. For example:
+The `exec` backend runs a single executable with the ref as its argument.
+The official keeper image is based on distroless and contains only the
+chur-keeper binary. The executable referenced by `CHUR_KEEPER_EXEC_COMMAND`
+must already exist in the container image. Shell scripts and third-party CLI tools require a custom keeper image.
 
-The `exec` backend runs a single command — `exec.Command` does not invoke a shell,
-so `CHUR_KEEPER_EXEC_COMMAND` must be a single executable without shell syntax.
-
-Create a wrapper script (e.g. `/usr/local/bin/get-aws-secret`):
-
-```bash
-#!/bin/sh
-aws secretsmanager get-secret-value --secret-id "$1" --query SecretString --output text
-```
-
-Then configure:
-
-```bash
-CHUR_KEEPER_BACKEND=exec
-CHUR_KEEPER_EXEC_COMMAND=/usr/local/bin/get-aws-secret
-```
-
-### Local provider in Kubernetes
-
-The `local` provider reads secret files from `CHUR_LOCAL_BASE_PATH`
-(default `/etc/chur/secrets`). When the provider is `local`, the webhook
-automatically mounts the base directory as a read-only `hostPath` volume into
-the `chur-init` container. You only need to ensure the files exist on the node
-at the expected path.
-
-The secret is still delivered to the application container through the
-in-memory `emptyDir` volume at `/secrets` (or the path specified by
-`chur.io/mount-path`).
+The Helm chart exposes `keeper.extraInitContainers`, `keeper.extraVolumes`, and `keeper.extraVolumeMounts`, allowing executables to be prepared before chur-keeper starts. See the [Helm chart README](charts/chur/README.md) for deployment examples.
 
 ## Configuration
 

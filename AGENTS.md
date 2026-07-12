@@ -70,7 +70,7 @@ chur-init runs first
        │      └── (if keeper provider) ──► chur-keeper (optional)
        │                                    │
        │                                    ├── filesystem backend
-       │                                    └── exec backend
+       │                                    └── exec backend (binary must exist in image)
        └── Write to tmpfs mount
        
 App container runs
@@ -125,9 +125,12 @@ long-running background services unless they solve a demonstrated user problem.
 - **YAGNI** — don't add providers "just in case". Add when needed.
 - **Global state creep** — the provider registry is justified; any other global state needs documentation.
 - **SDK bloat** — don't add cloud SDK dependencies to Go code. The `k8s` provider is
-  the only exception (requires `client-go`). For cloud secret stores (AWS, GCP, Azure,
-  Vault), the keeper's `exec` backend covers all of them — just pass a CLI command
-  (`aws secretsmanager`, `gcloud`, `az keyvault`, `vault read`) or a shell script.
+  the only exception (requires `client-go`). Cloud secret stores (AWS, GCP, Azure,
+  Vault) are covered by the keeper's `exec` backend — the executable
+  must already exist in the keeper container image (distroless).
+  Static Go binaries (e.g. `vault`) work via `extraInitContainers`.
+  Python-based CLIs (`aws`, `gcloud`, `az`) require a Python runtime —
+  use a custom image or External Secrets Operator.
   A secrets manager API needs only one operation — `GetSecret` — which does not
   justify pulling in an entire cloud SDK.
 - **Keeper platform creep** — keeper is a thin stateless gateway, not a platform.
@@ -161,17 +164,10 @@ long-running background services unless they solve a demonstrated user problem.
 
 ## Design Decisions
 
-**Cloud Secret Stores are NOT compiled into chur.**  
-The keeper's `exec` backend delegates to standard CLI tools:
-
-| Store | Command |
-|-------|---------|
-| AWS Secrets Manager | `aws secretsmanager get-secret-value --secret-id` |
-| GCP Secret Manager | `gcloud secrets versions access latest --secret` |
-| Azure Key Vault | `az keyvault secret show --name` |
-| HashiCorp Vault | `vault read -field=value` |
-
-Rationale: `GetSecret` is one API call — not worth pulling in any cloud SDK.
+**Cloud SDKs are NOT compiled into chur.**  
+`GetSecret` is one HTTP call — not worth pulling in cloud SDKs or Python CLI runtimes.  
+Static Go binaries (Vault, custom helpers) work with the distroless image via `extraInitContainers`.  
+Python-based CLIs (aws, gcloud, az) require a Python runtime — use a custom image or External Secrets Operator.
 
 ## Future Ideas
 

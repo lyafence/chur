@@ -18,6 +18,10 @@ spec:
         {{- include "chur.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: keeper
     spec:
+      {{- with .Values.keeper.extraInitContainers }}
+      initContainers:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: chur-keeper
           image: "{{ .Values.keeper.image.repository }}:{{ .Values.keeper.image.tag | default .Chart.AppVersion }}"
