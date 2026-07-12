@@ -37,8 +37,7 @@ service:
   type: ClusterIP
   # service.port is the port that the Kubernetes API server connects to.
   port: 443
-  # service.targetPort is the container port the service forwards to.
-  targetPort: 8443
+
 
 webhook:
   # webhook.tlsMode controls client authentication: "server" (default, no client cert)
@@ -205,3 +204,9 @@ rbac:
   # init containers. Pods using the k8s provider must set spec.serviceAccountName
   # to this value.
   serviceAccountName: chur-init
+
+networkPolicy:
+  # networkPolicy.enabled creates NetworkPolicy resources for chur components.
+  # When enabled, only expected traffic is allowed. Default is disabled because
+  # the API server source CIDR varies per cluster and may require custom rules.
+  enabled: false

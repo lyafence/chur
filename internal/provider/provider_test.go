@@ -2,8 +2,10 @@ package provider
 
 import (
 	"context"
-	"strings"
+	"errors"
 	"testing"
+
+	"k8s.io/client-go/rest"
 )
 
 func TestGetReturnsFalseForUnknown(t *testing.T) {
@@ -32,7 +34,7 @@ func TestFactoriesCreate(t *testing.T) {
 	for name, factory := range registry {
 		p, err := factory(context.Background())
 		if err != nil {
-			if strings.Contains(err.Error(), "in-cluster config") {
+			if errors.Is(err, rest.ErrNotInCluster) {
 				continue
 			}
 			t.Errorf("factory for %q returned error: %v", name, err)

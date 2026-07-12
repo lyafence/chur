@@ -42,11 +42,11 @@ func (p *LocalProvider) GetSecret(_ context.Context, ref string) ([]byte, error)
 }
 
 // parseSize converts a size string (plain int, Ki, Mi, Gi) to bytes.
-// Returns 1MiB default for empty or invalid input.
-func parseSize(v string) int64 {
+// Returns 0, nil for empty (use caller default). Returns 0, error for invalid.
+func parseSize(v string) (int64, error) {
 	v = strings.TrimSpace(v)
 	if v == "" {
-		return 1 << 20
+		return 0, nil
 	}
 	var mult int64 = 1
 	switch {
@@ -62,9 +62,9 @@ func parseSize(v string) int64 {
 	}
 	n, err := strconv.ParseInt(v, 10, 64)
 	if err != nil || n < 0 {
-		return 1 << 20
+		return 0, fmt.Errorf("invalid size %q", v)
 	}
-	return n * mult
+	return n * mult, nil
 }
 
 func init() {
@@ -75,7 +75,13 @@ func init() {
 		}
 		maxSize := int64(1 << 20)
 		if v := os.Getenv("CHUR_MAX_SECRET_SIZE"); v != "" {
-			maxSize = parseSize(v)
+			n, err := parseSize(v)
+			if err != nil {
+				return nil, fmt.Errorf("invalid CHUR_MAX_SECRET_SIZE %q", v)
+			}
+			if n > 0 {
+				maxSize = n
+			}
 		}
 		return &LocalProvider{basePath: basePath, maxSize: maxSize}, nil
 	})

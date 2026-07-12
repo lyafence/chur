@@ -231,7 +231,7 @@ func ServerTLSConfig(_ context.Context, cfg *Config) (*tls.Config, func() error,
 			return nil, nil, fmt.Errorf("keeper: mtls mode requires CHUR_KEEPER_CLIENT_CA_PATH")
 		}
 		if cfg.TLSCertFile == "" || cfg.TLSKeyFile == "" {
-			return nil, nil, fmt.Errorf("keeper: mtls mode requires CHUR_KEEPER_TLS_CERT_PATH and CHUR_KEEPER_TLS_KEY")
+			return nil, nil, fmt.Errorf("keeper: mtls mode requires CHUR_KEEPER_TLS_CERT_PATH and CHUR_KEEPER_TLS_KEY_PATH")
 		}
 		clientCACert, err := os.ReadFile(cfg.ClientCAFile)
 		if err != nil {

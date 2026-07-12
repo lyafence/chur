@@ -61,7 +61,7 @@ func ConfigFromEnv() (*Config, error) {
 	if v := os.Getenv("CHUR_KEEPER_TLS_CERT_PATH"); v != "" {
 		cfg.TLSCertFile = v
 	}
-	if v := os.Getenv("CHUR_KEEPER_TLS_KEY"); v != "" {
+	if v := os.Getenv("CHUR_KEEPER_TLS_KEY_PATH"); v != "" {
 		cfg.TLSKeyFile = v
 	}
 	if v := os.Getenv("CHUR_KEEPER_CLIENT_CA_PATH"); v != "" {

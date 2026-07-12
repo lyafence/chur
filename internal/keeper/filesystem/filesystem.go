@@ -58,7 +58,7 @@ func (b *FSBackend) GetSecret(ctx context.Context, ref string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("filesystem: stat opened %s: %w", cleanPath, err)
 	}
-	if fi2.Mode()&os.ModeSymlink != 0 || !os.SameFile(fi, fi2) {
+	if !os.SameFile(fi, fi2) {
 		return nil, fmt.Errorf("filesystem: file replaced with symlink: %q", ref)
 	}
 

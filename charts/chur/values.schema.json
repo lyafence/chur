@@ -100,12 +100,6 @@
           "minimum": 1,
           "maximum": 65535,
           "description": "Port that the Kubernetes API server connects to"
-        },
-        "targetPort": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 65535,
-          "description": "Container port the service forwards to"
         }
       }
     },
@@ -530,6 +524,16 @@
               "additionalProperties": { "type": "string" }
             }
           }
+        }
+      }
+    },
+    "networkPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Create NetworkPolicy resources for chur components"
         }
       }
     }

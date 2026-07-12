@@ -1,20 +1,19 @@
 # Security Policy
 
-## Reporting a Vulnerability
-
-Please report security vulnerabilities by emailing **spbve1fu6@mozmail.com**.
-
-Do not open public GitHub issues for security vulnerabilities.
-
 ## Supported Versions
 
-| Version | Supported          |
-|---------|--------------------|
-| latest  | :white_check_mark: |
-| < latest| :x:                |
+| Version | Supported |
+|---------|-----------|
+| 0.x     | ✅ (latest only) |
 
-## Scope
+## Reporting a Vulnerability
 
-This project handles secrets in Kubernetes. While chur uses tmpfs (in-memory)
-storage to minimize exposure, it is not a replacement for proper secret
-management practices (rotation, audit, access control).
+Report vulnerabilities privately via **GitHub Security Advisories**.
+Do **not** open public GitHub Issues for security vulnerabilities.
+
+Response time: within 72 hours for initial acknowledgment.
+
+## Threat Model
+
+See [THREAT_MODEL.md](THREAT_MODEL.md) for the full security architecture,
+trust boundaries, residual risks, and non-goals.

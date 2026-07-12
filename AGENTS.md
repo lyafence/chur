@@ -130,6 +130,9 @@ long-running background services unless they solve a demonstrated user problem.
   (`aws secretsmanager`, `gcloud`, `az keyvault`, `vault read`) or a shell script.
   A secrets manager API needs only one operation — `GetSecret` — which does not
   justify pulling in an entire cloud SDK.
+- **Keeper platform creep** — keeper is a thin stateless gateway, not a platform.
+  No cache, no auth, no rotation. Every new feature must justify its weight
+  against the principle: "keeper fetches secrets and returns them — nothing more."
 
 ## Current State
 

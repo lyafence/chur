@@ -10,8 +10,9 @@ chur aims to:
   to the application environment variables.
 - Avoid Kubernetes Secret volumes and hostPath-backed secret mounts in the
   application container.
-- Keep the lifetime of secret material as short as possible: fetch on Pod start,
-  write to tmpfs, then let the init container exit.
+- Deliver secret material during init only, then exit. The secret lives in the
+  Pod's tmpfs for the Pod's lifetime — there is no short-lived secret expiry
+  without Pod restart.
 - Rely on standard Kubernetes primitives (MutatingWebhookConfiguration, init
   containers, emptyDir volumes) instead of introducing a custom control plane.
 - Minimize the attack surface of both the webhook and the init container.
@@ -48,7 +49,11 @@ chur-webhook (Deployment)
 
 Trust assumptions:
 
-- The Kubernetes control plane and node kernel are trusted.
+- The Kubernetes control plane (API server, kube-controller-manager, etcd) is trusted.
+- The kubelet and container runtime on each node are trusted.
+- The Linux kernel is trusted (including seccomp, cgroups, and namespace isolation).
+- The admission webhook chain is trusted — any other webhook in the chain could
+  modify or remove chur's patches before the Pod is persisted.
 - The cluster administrator trusts the `chur-webhook` image and TLS config.
 - The application owner trusts the provider backend that stores the raw secret.
 
@@ -76,8 +81,14 @@ Trust assumptions:
   webhook.
 - **Mitigation:** The webhook uses TLS. In production it should be deployed with
   `failurePolicy: Fail` so the API server rejects Pod creation if the webhook is
-  unreachable. The webhook validates all annotations and rejects unknown
-  providers.
+  unreachable (this trades availability for security — a down webhook blocks all
+  Pod creation). With `failurePolicy: Ignore`, Pods would be created without
+  chur injection, allowing secrets to reach the container through conventional
+  Kubernetes mechanisms. The webhook validates all annotations and rejects
+  unknown providers. It is also idempotent under `reinvocationPolicy: IfNeeded`:
+  if the API server re-invokes the webhook on an already-mutated Pod, the
+  existing tmpfs volume, init container, and volume mounts are detected and not
+  duplicated.
 
 ### T4: Privilege escalation inside the Pod
 
@@ -133,6 +144,23 @@ Trust assumptions:
   dynamic `ref` parameter to avoid downstream directory traversal,
   command injection, or application-level exploits.
 
+## Residual Risks
+
+Even with chur correctly deployed, the following risks remain:
+
+- The secret value exists in plaintext in the Pod's tmpfs. Any process running
+  in the application container (or a sidecar) with read access to the mount path
+  can read it.
+- If the node runs out of memory, the kernel may swap tmpfs pages to disk,
+  persisting secret material outside of RAM.
+- The secret is readable via `/proc/<pid>/root` by processes with
+  `CAP_SYS_PTRACE` or root access on the node.
+- The `k8s` provider stores the upstream Kubernetes Secret in etcd. chur only
+  changes the delivery mechanism — the raw secret remains in the cluster's
+  persistent storage.
+- Environment variables set by the webhook in the init container (provider,
+  ref, paths) are visible via `/proc` during the init container's execution.
+
 ## Non-Goals
 
 The following are intentionally out of scope:
@@ -144,6 +172,14 @@ The following are intentionally out of scope:
 - Advanced audit capabilities beyond structured JSON logs.
 - Control-plane components, CRDs, or controllers.
 - Automated mTLS certificate rotation for `chur-keeper`.
+- Protection against an attacker with root access to the worker node (they can
+  read the tmpfs directly via the container runtime or `/proc`).
+- Protection against eBPF, `ptrace`, or memory dump attacks on the node — these
+  bypass Pod-level isolation entirely.
+- Protection against a compromised kubelet or container runtime.
+- Protection against malicious CSI drivers or other node-level agents.
+- Prevention of secret read by sidecar containers within the same Pod (tmpfs is
+  shared by design).
 
 ## Basic Audit
 

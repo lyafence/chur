@@ -4,11 +4,15 @@
 
 ![Status](https://img.shields.io/badge/status-alpha-yellow)
 
-**Lightweight in-memory secret injection for Kubernetes.**
+**In-memory secret delivery for Kubernetes.**  
 
-chur is not another secrets manager. It is the simplest secure way to deliver a
-secret directly into the memory of a Kubernetes workload. See
-[THREAT_MODEL.md](THREAT_MODEL.md) for the security model.
+Kubernetes Secrets are a great storage mechanism, but they are not always the
+best delivery mechanism — they end up in etcd, environment variables, disk
+files, crash dumps, and debug logs. chur changes how secrets reach your
+workload: it injects them directly into container memory (tmpfs) at Pod start
+and never touches disk or environment variables. It is the simplest secure way
+to deliver a secret into a Kubernetes workload — not another secrets manager.
+See [THREAT_MODEL.md](THREAT_MODEL.md) for the security model.
 
 ## Overview
 
@@ -171,8 +175,9 @@ Vault) are covered by chur-keeper's `exec` backend — no Go SDK dependencies ne
 
 ## chur-keeper (optional)
 
-`chur-keeper` is an optional standalone HTTPS gateway that exposes secrets to
-`chur-init` via a single endpoint:
+`chur-keeper` is an optional stateless HTTPS gateway. It fetches secrets from a
+configurable backend — it does not store them, cache them, or authenticate
+callers. It exposes a single endpoint to `chur-init`:
 
 - `POST /v1/secrets/get` — accepts `{"ref":"..."}`, returns raw secret bytes.
 
