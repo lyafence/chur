@@ -2,8 +2,9 @@ package webhook
 
 import (
 	"crypto/tls"
-	"crypto/x509"
 	"fmt"
+
+	churtls "github.com/lyafence/chur/internal/tls"
 )
 
 // TLSMode controls whether the webhook requires client certificates.
@@ -27,9 +28,9 @@ func TLSConfig(mode TLSMode, clientCAPEM []byte) (*tls.Config, error) {
 		if len(clientCAPEM) == 0 {
 			return nil, fmt.Errorf("mtls mode requires a non-empty client CA certificate")
 		}
-		pool := x509.NewCertPool()
-		if !pool.AppendCertsFromPEM(clientCAPEM) {
-			return nil, fmt.Errorf("failed to parse client CA certificate")
+		pool, err := churtls.ClientCAPool(clientCAPEM)
+		if err != nil {
+			return nil, err
 		}
 		return &tls.Config{
 			MinVersion: tls.VersionTLS13,

@@ -68,15 +68,22 @@ func init() {
 			return nil, fmt.Errorf("k8s: create client: %w", err)
 		}
 		ns := "default"
-		nsDone := make(chan []byte, 1)
+		type nsResult struct {
+			data []byte
+			err  error
+		}
+		nsDone := make(chan nsResult, 1)
 		go func() {
-			data, _ := os.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/namespace")
-			nsDone <- data
+			data, err := os.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/namespace")
+			nsDone <- nsResult{data, err}
 		}()
 		select {
-		case data := <-nsDone:
-			if len(data) > 0 {
-				ns = string(data)
+		case res := <-nsDone:
+			if res.err != nil {
+				return nil, fmt.Errorf("k8s: read namespace: %w", res.err)
+			}
+			if len(res.data) > 0 {
+				ns = string(res.data)
 			}
 		case <-ctx.Done():
 			return nil, ctx.Err()

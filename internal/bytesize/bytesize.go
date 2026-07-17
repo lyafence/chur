@@ -2,6 +2,7 @@ package bytesize
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 )
@@ -16,15 +17,15 @@ func Parse(s string) (int64, error) {
 	var multiplier int64 = 1
 	num := s
 	switch {
-	case strings.HasSuffix(s, "Gi"):
+	case strings.HasSuffix(s, "Gi") || strings.HasSuffix(s, "gi"):
 		multiplier = 1 << 30
-		num = strings.TrimSuffix(s, "Gi")
-	case strings.HasSuffix(s, "Mi"):
+		num = s[:len(s)-2]
+	case strings.HasSuffix(s, "Mi") || strings.HasSuffix(s, "mi"):
 		multiplier = 1 << 20
-		num = strings.TrimSuffix(s, "Mi")
-	case strings.HasSuffix(s, "Ki"):
+		num = s[:len(s)-2]
+	case strings.HasSuffix(s, "Ki") || strings.HasSuffix(s, "ki"):
 		multiplier = 1 << 10
-		num = strings.TrimSuffix(s, "Ki")
+		num = s[:len(s)-2]
 	}
 
 	n, err := strconv.ParseInt(num, 10, 64)
@@ -33,6 +34,9 @@ func Parse(s string) (int64, error) {
 	}
 	if n < 0 {
 		return 0, fmt.Errorf("negative size %d", n)
+	}
+	if n > math.MaxInt64/multiplier {
+		return 0, fmt.Errorf("size overflow %d", n)
 	}
 	return n * multiplier, nil
 }

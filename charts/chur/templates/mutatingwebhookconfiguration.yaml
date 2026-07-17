@@ -25,7 +25,7 @@ webhooks:
         apiGroups: [""]
         apiVersions: ["v1"]
         resources: ["pods"]
-        scope: "*"
+        scope: "Namespaced"
     failurePolicy: {{ .Values.webhook.failurePolicy }}
     sideEffects: None
     admissionReviewVersions: ["v1"]

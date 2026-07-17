@@ -88,7 +88,9 @@ Trust assumptions:
   unknown providers. It is also idempotent under `reinvocationPolicy: IfNeeded`:
   if the API server re-invokes the webhook on an already-mutated Pod, the
   existing tmpfs volume, init container, and volume mounts are detected and not
-  duplicated.
+  duplicated. The webhook's MutatingWebhookConfiguration uses
+  `scope: Namespaced`, limiting it to namespaced Pods only — it does not
+  intercept cluster-scoped resources (e.g., Nodes, CRDs).
 
 ### T4: Privilege escalation inside the Pod
 
@@ -97,7 +99,9 @@ Trust assumptions:
 - **Mitigation:** `chur-init` runs as non-root (configurable via
   `CHUR_RUN_AS_USER`, `CHUR_RUN_AS_GROUP`, `CHUR_FS_GROUP`), with a read-only
   root filesystem, dropped capabilities, and a shared fsGroup. The secret file
-  is written with mode `0640` so only the shared group can read it.
+  is written with mode `0640` via `os.WriteFile`, then explicitly re-applied
+  with `os.Chmod` after the atomic rename. This guarantees `0640` regardless
+  of the container's umask — only the shared group can read the secret.
 
 ### T5: Secret exfiltration by a compromised app container
 
@@ -112,6 +116,9 @@ Trust assumptions:
 - **Mitigation:** `CHUR_MAX_SECRET_SIZE` limits the size of a fetched secret.
   `CHUR_VOLUME_SIZE_LIMIT` bounds the tmpfs volume. The optional `chur-keeper`
   also enforces its own limit via `CHUR_KEEPER_MAX_SECRET_SIZE` (server-side).
+  The `exec` backend enforces `maxStdout > 0` at construction time —
+  an unlimited stdout read path is impossible to create, preventing a
+  malicious or buggy executable from exhausting keeper memory.
 
 ### T7: Denial of service against the webhook
 
@@ -131,18 +138,31 @@ Trust assumptions:
 - **Scenario:** `chur-keeper` reads secrets from arbitrary files or executes
   arbitrary commands due to a malicious `ref`.
 - **Mitigation:** Keeper refs are validated to disallow traversal (`..`),
-  absolute paths, and control characters. The filesystem backend resolves the
-  path and verifies it remains under `CHUR_KEEPER_BACKEND_FS_ROOT`.
-- **Note:** Symlinks inside `CHUR_KEEPER_BACKEND_FS_ROOT` are rejected at the
-  filesystem level — both at open time (`os.Lstat`) and after open (`f.Stat` +
-  `os.SameFile`), closing the TOCTOU race window between path validation and
-  file read. Operators should still ensure the root directory is writable only
+  absolute paths, and control characters. The filesystem backend uses
+  `os.OpenRoot` (Go 1.24+) to open the root directory: all file access is
+  constrained to the root, and symlinks that escape the root are rejected by
+  the kernel at `open` time. This eliminates the entire class of path traversal
+  and TOCTOU (time-of-check-time-of-use) attacks against the backend —
+  there is no manual path validation on the file resolver side.
+  Operators should still ensure the root directory is writable only
   by trusted principals.
 - **Note:** For the `exec` backend, `chur-keeper` passes `ref` as a single
   isolated argument, which prevents shell injection. However, the target
   executable or script is responsible for validating and sanitizing the
   dynamic `ref` parameter to avoid downstream directory traversal,
   command injection, or application-level exploits.
+
+### T10: Webhook service account compromise
+
+- **Scenario:** An attacker compromises the webhook pod and uses its service
+  account token to make Kubernetes API calls.
+- **Mitigation:** The webhook ServiceAccount is created with
+  `automountServiceAccountToken: false`. The webhook pod receives no Kubernetes
+  API token — it cannot authenticate to the API server even if compromised.
+  The webhook does not need API access to mutate Pods (the API server calls
+  the webhook, not the other way around). If future features require API access,
+  a separate ServiceAccount should be introduced with minimal RBAC scoped to
+  that feature.
 
 ## Residual Risks
 
@@ -187,4 +207,4 @@ chur emits structured JSON logs from both `chur-webhook` and `chur-init`. These
 logs are the basic audit trail: they record when a secret is injected, by which
 provider, and for which reference. Advanced audit capabilities (for example,
 streaming to a SIEM or Kubernetes Audit Events integration) are not implemented
-in v0.2.
+in v0.3+ (as of this writing).

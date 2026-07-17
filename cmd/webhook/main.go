@@ -64,21 +64,27 @@ func main() {
 	}
 	if v := os.Getenv("CHUR_RUN_AS_USER"); v != "" {
 		n, err := strconv.ParseInt(v, 10, 64)
-		if err == nil {
-			cfg.RunAsUser = n
+		if err != nil {
+			slog.ErrorContext(ctx, "invalid CHUR_RUN_AS_USER", "value", v, "error", err)
+			os.Exit(1)
 		}
+		cfg.RunAsUser = n
 	}
 	if v := os.Getenv("CHUR_RUN_AS_GROUP"); v != "" {
 		n, err := strconv.ParseInt(v, 10, 64)
-		if err == nil {
-			cfg.RunAsGroup = ptr.To(n)
+		if err != nil {
+			slog.ErrorContext(ctx, "invalid CHUR_RUN_AS_GROUP", "value", v, "error", err)
+			os.Exit(1)
 		}
+		cfg.RunAsGroup = ptr.To(n)
 	}
 	if v := os.Getenv("CHUR_FS_GROUP"); v != "" {
 		n, err := strconv.ParseInt(v, 10, 64)
-		if err == nil {
-			cfg.FSGroup = n
+		if err != nil {
+			slog.ErrorContext(ctx, "invalid CHUR_FS_GROUP", "value", v, "error", err)
+			os.Exit(1)
 		}
+		cfg.FSGroup = n
 	}
 	if v := os.Getenv("CHUR_MAX_SECRET_SIZE"); v != "" {
 		if _, err := resource.ParseQuantity(v); err != nil {
@@ -230,7 +236,7 @@ func main() {
 		"max_concurrent", cfg.MaxConcurrent,
 	)
 
-	srvErr := make(chan error, 1)
+	srvErr := make(chan error, 2)
 
 	go func() {
 		slog.InfoContext(ctx, "starting chur-webhook admission",
@@ -267,14 +273,16 @@ func main() {
 		slog.ErrorContext(ctx, "admission server shutdown error", "error", err)
 	}
 
-	// If a server error was captured, exit non-zero so K8s restarts the pod.
-	select {
-	case err := <-srvErr:
-		if err != nil {
-			slog.ErrorContext(ctx, "exiting with error", "error", err)
-			os.Exit(1)
+	// If any server error was captured, exit non-zero so K8s restarts the pod.
+	for i := 0; i < 2; i++ {
+		select {
+		case err := <-srvErr:
+			if err != nil {
+				slog.ErrorContext(ctx, "exiting with error", "error", err)
+				os.Exit(1)
+			}
+		default:
 		}
-	default:
 	}
 }
 

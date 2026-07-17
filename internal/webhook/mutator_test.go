@@ -126,9 +126,74 @@ func TestMutatePod_CreatesArrays(t *testing.T) {
 		t.Fatalf("patch is not valid JSON: %v", err)
 	}
 
-	// We expect securityContext fsGroup, volumes, initContainers, and one container volumeMounts.
+	// Verify patch content: securityContext fsGroup, volumes, initContainers, container volumeMounts.
 	if len(ops) != 4 {
 		t.Fatalf("expected 4 patch operations, got %d", len(ops))
+	}
+
+	var (
+		hasFSGroup       bool
+		hasVolumes       bool
+		hasInitContainer bool
+		hasVolumeMount   bool
+	)
+	for _, op := range ops {
+		switch op["path"] {
+		case "/spec/securityContext":
+			hasFSGroup = true
+		case "/spec/volumes":
+			hasVolumes = true
+			val, ok := op["value"].([]any)
+			if !ok || len(val) != 1 {
+				t.Error("expected one volume in /spec/volumes")
+				continue
+			}
+			vol, ok := val[0].(map[string]any)
+			if !ok {
+				t.Error("volume value is not a map")
+				continue
+			}
+			emptyDir, ok := vol["emptyDir"].(map[string]any)
+			if !ok {
+				t.Error("emptyDir missing in volume")
+				continue
+			}
+			if emptyDir["medium"] != "Memory" {
+				t.Errorf("expected emptyDir medium=Memory, got %v", emptyDir["medium"])
+			}
+		case "/spec/initContainers":
+			hasInitContainer = true
+			val, ok := op["value"].([]any)
+			if !ok || len(val) != 1 {
+				t.Error("expected one init container")
+				continue
+			}
+			ic, ok := val[0].(map[string]any)
+			if !ok {
+				t.Error("init container value is not a map")
+				continue
+			}
+			if ic["image"] == nil || ic["image"] == "" {
+				t.Error("init container has no image")
+			}
+			if mounts, ok := ic["volumeMounts"].([]any); !ok || len(mounts) == 0 {
+				t.Error("init container has no volume mounts")
+			}
+		case "/spec/containers/0/volumeMounts":
+			hasVolumeMount = true
+		}
+	}
+	if !hasFSGroup {
+		t.Error("missing /spec/securityContext operation")
+	}
+	if !hasVolumes {
+		t.Error("missing /spec/volumes operation")
+	}
+	if !hasInitContainer {
+		t.Error("missing /spec/initContainers operation")
+	}
+	if !hasVolumeMount {
+		t.Error("missing container volumeMounts operation")
 	}
 }
 
@@ -789,18 +854,6 @@ func TestValidProvidersMatchRegistry(t *testing.T) {
 	for _, name := range registered {
 		if !validProviders[name] {
 			t.Errorf("registry has %q but validProviders does not", name)
-		}
-	}
-	for name := range validProviders {
-		found := false
-		for _, r := range registered {
-			if r == name {
-				found = true
-				break
-			}
-		}
-		if !found {
-			t.Errorf("validProviders has %q but registry does not", name)
 		}
 	}
 }

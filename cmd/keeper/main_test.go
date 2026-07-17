@@ -36,7 +36,11 @@ func TestKeeperIntegration(t *testing.T) {
 	cfg.HealthListen = ""
 	cfg.TLSMode = keeper.TLSModeSelfSigned
 	cfg.BackendType = "filesystem"
-	cfg.Backend = filesystem.NewWithMaxSize(dir, 1<<20)
+	fsBackend, err := filesystem.NewWithMaxSize(dir, 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Backend = fsBackend
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

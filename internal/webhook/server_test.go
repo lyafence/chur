@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -91,6 +92,28 @@ func TestServer_Mutate_AllowsPod(t *testing.T) {
 	}
 	if resp.Response.PatchType == nil || *resp.Response.PatchType != admissionv1.PatchTypeJSONPatch {
 		t.Fatal("expected JSONPatch")
+	}
+	if len(resp.Response.Patch) == 0 {
+		t.Fatal("expected non-empty patch")
+	}
+	var ops []map[string]any
+	if err := json.Unmarshal(resp.Response.Patch, &ops); err != nil {
+		t.Fatalf("patch is not valid JSON: %v", err)
+	}
+	if len(ops) == 0 {
+		t.Fatal("expected at least one patch operation")
+	}
+	var hasVolumeMount bool
+	for _, op := range ops {
+		if op["op"] != "add" {
+			t.Errorf("expected op=add, got %v", op["op"])
+		}
+		if p, _ := op["path"].(string); strings.HasPrefix(p, "/spec/containers/0/volumeMounts") {
+			hasVolumeMount = true
+		}
+	}
+	if !hasVolumeMount {
+		t.Error("expected at least one volumeMount operation")
 	}
 }
 

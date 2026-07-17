@@ -31,7 +31,17 @@ func main() {
 		if root == "" {
 			root = "/var/lib/chur-keeper/secrets"
 		}
-		cfg.Backend = filesystem.NewWithMaxSize(root, cfg.MaxSecretSize)
+		fsBackend, err := filesystem.NewWithMaxSize(root, cfg.MaxSecretSize)
+		if err != nil {
+			slog.ErrorContext(ctx, "filesystem backend: open root failed", "root", root, "error", err)
+			os.Exit(1)
+		}
+		cfg.Backend = fsBackend
+		defer func() {
+			if err := fsBackend.Close(); err != nil {
+				slog.ErrorContext(ctx, "filesystem backend: close root failed", "error", err)
+			}
+		}()
 
 	case "exec":
 		cmd := cfg.ExecCommand
@@ -39,7 +49,12 @@ func main() {
 			slog.ErrorContext(ctx, "CHUR_KEEPER_EXEC_COMMAND is required for exec backend")
 			os.Exit(1)
 		}
-		cfg.Backend = exec.New(cmd, cfg.ExecTimeout, cfg.ExecMaxStdout)
+		execBackend, err := exec.New(cmd, cfg.ExecTimeout, cfg.ExecMaxStdout)
+		if err != nil {
+			slog.ErrorContext(ctx, "exec backend: invalid config", "error", err)
+			os.Exit(1)
+		}
+		cfg.Backend = execBackend
 
 	default:
 		slog.ErrorContext(ctx, "unknown backend type", "backend", cfg.BackendType)

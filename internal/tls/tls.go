@@ -2,8 +2,9 @@ package tls
 
 import (
 	"bytes"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
-	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -19,7 +20,7 @@ import (
 // given host (DNS name or IP address). Both are returned as PEM-encoded byte
 // slices. The cert is valid for 365 days.
 func GenerateCertMemory(host string) (certPEM, keyPEM []byte, err error) {
-	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return nil, nil, fmt.Errorf("generate key: %w", err)
 	}
@@ -37,7 +38,7 @@ func GenerateCertMemory(host string) (certPEM, keyPEM []byte, err error) {
 		},
 		NotBefore:             time.Now(),
 		NotAfter:              time.Now().Add(365 * 24 * time.Hour),
-		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
+		KeyUsage:              x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		BasicConstraintsValid: true,
 	}
@@ -59,9 +60,13 @@ func GenerateCertMemory(host string) (certPEM, keyPEM []byte, err error) {
 	}
 
 	var keyBuf bytes.Buffer
+	keyBytes, err := x509.MarshalECPrivateKey(key)
+	if err != nil {
+		return nil, nil, fmt.Errorf("marshal EC key: %w", err)
+	}
 	if err := pem.Encode(&keyBuf, &pem.Block{
-		Type:  "RSA PRIVATE KEY",
-		Bytes: x509.MarshalPKCS1PrivateKey(key),
+		Type:  "EC PRIVATE KEY",
+		Bytes: keyBytes,
 	}); err != nil {
 		return nil, nil, fmt.Errorf("encode key PEM: %w", err)
 	}
@@ -87,6 +92,16 @@ func GenerateTLSCert(host string, certPath, keyPath string) error {
 	return nil
 }
 
+// ClientCAPool parses a PEM-encoded CA certificate and returns a *x509.CertPool
+// suitable for verifying client certificates in TLS configs.
+func ClientCAPool(pem []byte) (*x509.CertPool, error) {
+	pool := x509.NewCertPool()
+	if !pool.AppendCertsFromPEM(pem) {
+		return nil, fmt.Errorf("failed to parse client CA certificate")
+	}
+	return pool, nil
+}
+
 // ServerTLSConfig returns a *tls.Config loaded with a server certificate and
 // optional client certificate verification. clientCAPEM may be nil for self-signed mode.
 func ServerTLSConfig(clientCAPEM []byte, certFile, keyFile string) (*tls.Config, error) {
@@ -101,9 +116,9 @@ func ServerTLSConfig(clientCAPEM []byte, certFile, keyFile string) (*tls.Config,
 	}
 
 	if len(clientCAPEM) > 0 {
-		pool := x509.NewCertPool()
-		if !pool.AppendCertsFromPEM(clientCAPEM) {
-			return nil, fmt.Errorf("failed to parse client CA certificate")
+		pool, err := ClientCAPool(clientCAPEM)
+		if err != nil {
+			return nil, err
 		}
 		cfg.ClientAuth = tls.RequireAndVerifyClientCert
 		cfg.ClientCAs = pool

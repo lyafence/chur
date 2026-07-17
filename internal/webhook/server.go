@@ -32,8 +32,12 @@ func NewServer(cfg *Config) (*Server, error) {
 	}
 
 	scheme := runtime.NewScheme()
-	_ = corev1.AddToScheme(scheme)
-	_ = admissionv1.AddToScheme(scheme)
+	if err := corev1.AddToScheme(scheme); err != nil {
+		return nil, fmt.Errorf("add corev1 to scheme: %w", err)
+	}
+	if err := admissionv1.AddToScheme(scheme); err != nil {
+		return nil, fmt.Errorf("add admissionv1 to scheme: %w", err)
+	}
 
 	s := &Server{
 		cfg:          cfg,
@@ -203,5 +207,7 @@ func healthz(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte(`{"status":"ok"}`))
+	if _, err := w.Write([]byte(`{"status":"ok"}`)); err != nil {
+		slog.WarnContext(r.Context(), "health: failed to write response", "error", err)
+	}
 }

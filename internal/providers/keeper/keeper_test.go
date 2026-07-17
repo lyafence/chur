@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -51,6 +52,27 @@ func TestGetSecretError(t *testing.T) {
 	_, err = p.GetSecret(context.Background(), "missing")
 	if err == nil {
 		t.Fatal("expected error")
+	}
+}
+
+func TestGetSecretServerError(t *testing.T) {
+	t.Parallel()
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"error":"boom"}`))
+	}))
+	defer srv.Close()
+
+	p, err := NewProvider(srv.URL, true, "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = p.GetSecret(context.Background(), "ref")
+	if err == nil {
+		t.Fatal("expected error for 5xx")
+	}
+	if !strings.Contains(err.Error(), "500") {
+		t.Errorf("expected 500 in error, got %v", err)
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os/exec"
 	"time"
 
@@ -38,8 +39,11 @@ type ExecBackend struct {
 	maxStdout int64
 }
 
-func New(command string, timeout time.Duration, maxStdout int64) *ExecBackend {
-	return &ExecBackend{command: command, timeout: timeout, maxStdout: maxStdout}
+func New(command string, timeout time.Duration, maxStdout int64) (*ExecBackend, error) {
+	if maxStdout <= 0 {
+		return nil, fmt.Errorf("exec: maxStdout must be positive, got %d", maxStdout)
+	}
+	return &ExecBackend{command: command, timeout: timeout, maxStdout: maxStdout}, nil
 }
 
 func (b *ExecBackend) Name() string { return "exec" }
@@ -74,20 +78,18 @@ func (b *ExecBackend) GetSecret(ctx context.Context, ref string) ([]byte, error)
 	}
 
 	var out bytes.Buffer
-	if b.maxStdout > 0 {
-		n, err := io.CopyN(&out, stdout, b.maxStdout+1)
-		if n > b.maxStdout {
-			_ = cmd.Process.Kill()
-			_ = cmd.Wait()
-			return nil, fmt.Errorf("exec: stdout exceeds max size (%d bytes)", b.maxStdout)
+	n, err := io.CopyN(&out, stdout, b.maxStdout+1)
+	if n > b.maxStdout {
+		if err := cmd.Process.Kill(); err != nil {
+			slog.WarnContext(ctx, "exec: failed to kill process", "error", err)
 		}
-		if err != nil && !errors.Is(err, io.EOF) {
-			return nil, fmt.Errorf("exec: read stdout: %w", err)
+		if err := cmd.Wait(); err != nil {
+			slog.WarnContext(ctx, "exec: wait after kill returned error", "error", err)
 		}
-	} else {
-		if _, err := out.ReadFrom(stdout); err != nil {
-			return nil, fmt.Errorf("exec: read stdout: %w", err)
-		}
+		return nil, fmt.Errorf("exec: stdout exceeds max size (%d bytes)", b.maxStdout)
+	}
+	if err != nil && !errors.Is(err, io.EOF) {
+		return nil, fmt.Errorf("exec: read stdout: %w", err)
 	}
 
 	if err := cmd.Wait(); err != nil {

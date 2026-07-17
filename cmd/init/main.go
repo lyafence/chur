@@ -8,8 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"k8s.io/apimachinery/pkg/api/resource"
-
+	"github.com/lyafence/chur/internal/bytesize"
 	"github.com/lyafence/chur/internal/provider"
 	_ "github.com/lyafence/chur/internal/providers/env"
 	_ "github.com/lyafence/chur/internal/providers/keeper"
@@ -70,14 +69,14 @@ func main() {
 	if maxSizeStr == "" {
 		maxSizeStr = "1Mi"
 	}
-	maxBytes, err := resource.ParseQuantity(maxSizeStr)
+	maxBytes, err := bytesize.Parse(maxSizeStr)
 	if err != nil {
 		slog.ErrorContext(ctx, "invalid CHUR_MAX_SECRET_SIZE", "value", maxSizeStr, "error", err)
 		os.Exit(1)
 	}
-	if int64(len(secret)) > maxBytes.Value() {
+	if int64(len(secret)) > maxBytes {
 		slog.ErrorContext(ctx, "secret exceeds max size",
-			"ref", secretRef, "size", len(secret), "max", maxBytes.String())
+			"ref", secretRef, "size", len(secret), "max", maxSizeStr)
 		os.Exit(1)
 	}
 
@@ -101,6 +100,10 @@ func main() {
 	if err := os.Rename(tmpPath, path); err != nil {
 		os.Remove(tmpPath)
 		slog.ErrorContext(ctx, "failed to rename secret", "path", path, "error", err)
+		os.Exit(1)
+	}
+	if err := os.Chmod(path, 0640); err != nil {
+		slog.ErrorContext(ctx, "failed to chmod secret", "path", path, "error", err)
 		os.Exit(1)
 	}
 

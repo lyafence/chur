@@ -158,7 +158,11 @@ The application reads the secret from `/secrets/<ref>` (e.g. `/secrets/db-creden
 | `chur.io/secret-key` | Key within the Kubernetes Secret's data map (used by the `k8s` provider) | No |
 | `chur.io/mount-path` | Path to mount the tmpfs volume (default: `/secrets`) | No |
 | `chur.io/keeper-skip-verify` | Skip TLS verification when calling `chur-keeper` (dev only, `"1"` or `"true"`) | No |
-| `chur.io/provider-env` | Extra `CHUR_*` env vars for chur-init, JSON format: `{"KEY":"VAL"}` | No |
+| `chur.io/provider-env` | Extra `CHUR_*` env vars for chur-init, JSON format: `{"KEY":"VAL"}`. Only applies when provider is `keeper`. Ignored for other providers. | No |
+
+> **Dry-run behavior:** During dry-run requests (e.g., `kubectl apply --dry-run=server`),
+> the webhook returns `Allowed=true` without mutation patches. This allows the API
+> server to validate webhook connectivity without actuating side effects.
 
 ## Providers
 
@@ -196,7 +200,9 @@ Backends are selected via `CHUR_KEEPER_BACKEND`:
 
 To use it, annotate a Pod with `chur.io/provider: keeper` and set
 `chur.io/secret-ref` to the keeper ref. The webhook automatically injects
-`CHUR_KEEPER_URL` when keeper is enabled in Helm. Additional provider config can
+`CHUR_KEEPER_URL` into chur-init containers of pods using the keeper provider,
+when `CHUR_KEEPER_SERVICE_NAME` is configured (set automatically by the Helm chart
+when keeper is enabled). Additional provider config can
 be supplied through annotations:
 
 | Annotation | Effect |
@@ -227,6 +233,7 @@ init container configuration), see [`.env.example`](.env.example).
 | `CHUR_VOLUME_SIZE_LIMIT` | `10Mi` | webhook | Max size of tmpfs volume per pod |
 | `CHUR_ALLOWED_NAMESPACES` | (all) | webhook | Comma-separated allowlist |
 | `CHUR_INIT_IMAGE` | `ghcr.io/lyafence/chur-init:latest` | webhook | Init container image |
+| `CHUR_INIT_IMAGE_PULL_POLICY` | `IfNotPresent` | webhook | Init container image pull policy |
 | `CHUR_MAX_CONCURRENT` | `100` | webhook | Max concurrent admission reviews |
 | `CHUR_PROVIDER` | `env` | init | Secret provider name |
 | `CHUR_MAX_SECRET_SIZE` | `1Mi` | init | Max secret size |

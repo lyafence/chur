@@ -132,7 +132,8 @@ keeper:
 ```
 
 When `keeper.enabled=true`, the webhook automatically injects `CHUR_KEEPER_URL`
-into every `chur-init` container. Use `chur.io/provider: keeper` in your Pod
+into chur-init containers of pods using the keeper provider
+(`chur.io/provider: keeper`). Use `chur.io/provider: keeper` in your Pod
 annotations to route secret fetching through the keeper.
 
 Additional keeper annotations:

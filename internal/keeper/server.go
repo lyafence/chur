@@ -52,7 +52,7 @@ func Serve(ctx context.Context, cfg *Config, tlsCfg *tls.Config, listener net.Li
 		MaxHeaderBytes:    1 << 20,
 	}
 
-	srvErr := make(chan error, 1)
+	srvErr := make(chan error, 2)
 
 	var healthSrv *http.Server
 	if cfg.HealthListen != "" {
@@ -105,12 +105,14 @@ func Serve(ctx context.Context, cfg *Config, tlsCfg *tls.Config, listener net.Li
 	}
 	shutdownErr := srv.Shutdown(shutdownCtx)
 
-	select {
-	case err := <-srvErr:
-		if err != nil {
-			return err
+	for i := 0; i < 2; i++ {
+		select {
+		case err := <-srvErr:
+			if err != nil {
+				return err
+			}
+		default:
 		}
-	default:
 	}
 	return shutdownErr
 }
@@ -122,7 +124,9 @@ func healthz(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte(`{"status":"ok"}`))
+	if _, err := w.Write([]byte(`{"status":"ok"}`)); err != nil {
+		slog.WarnContext(r.Context(), "keeper health: failed to write response", "error", err)
+	}
 }
 
 func handleGetSecret(b Backend, maxSize int64, sem chan struct{}) http.HandlerFunc {
@@ -214,14 +218,18 @@ func ServerTLSConfig(_ context.Context, cfg *Config) (*tls.Config, func() error,
 			certFile = tmpDir + "/tls.crt"
 			keyFile = tmpDir + "/tls.key"
 			if err := churtls.GenerateTLSCert(dnsName, certFile, keyFile); err != nil {
-				_ = cleanup()
+				if cleanErr := cleanup(); cleanErr != nil {
+					slog.WarnContext(context.Background(), "keeper: failed to clean up temp dir after cert generation failure", "error", cleanErr)
+				}
 				return nil, nil, fmt.Errorf("keeper: generate cert: %w", err)
 			}
 		}
 
 		tlsCfg, err := churtls.ServerTLSConfig(nil, certFile, keyFile)
 		if err != nil {
-			_ = cleanup()
+			if cleanErr := cleanup(); cleanErr != nil {
+				slog.WarnContext(context.Background(), "keeper: failed to clean up temp dir after TLS config failure", "error", cleanErr)
+			}
 			return nil, nil, err
 		}
 		return tlsCfg, cleanup, nil

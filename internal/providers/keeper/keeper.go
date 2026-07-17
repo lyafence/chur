@@ -8,12 +8,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
-	"strconv"
 	"time"
 
+	"github.com/lyafence/chur/internal/bytesize"
 	"github.com/lyafence/chur/internal/provider"
 )
 
@@ -90,7 +91,10 @@ func (p *KeeperProvider) GetSecret(ctx context.Context, ref string) ([]byte, err
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+		respBody, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+		if err != nil {
+			slog.WarnContext(ctx, "keeper: failed to read error response body", "status", resp.Status, "error", err)
+		}
 		return nil, fmt.Errorf("keeper: %s: %s", resp.Status, string(respBody))
 	}
 
@@ -119,7 +123,11 @@ func init() {
 			return nil, err
 		}
 		if v := os.Getenv("CHUR_KEEPER_CLIENT_MAX_SECRET_SIZE"); v != "" {
-			if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
+			n, err := bytesize.Parse(v)
+			if err != nil {
+				return nil, fmt.Errorf("invalid CHUR_KEEPER_CLIENT_MAX_SECRET_SIZE %q: %w", v, err)
+			}
+			if n > 0 {
 				p.maxSecretSize = n
 			}
 		}

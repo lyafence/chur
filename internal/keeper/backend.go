@@ -1,9 +1,6 @@
 package keeper
 
-import "context"
+import "github.com/lyafence/chur/internal/provider"
 
 // Backend fetches secret bytes from a keeper backend.
-type Backend interface {
-	Name() string
-	GetSecret(ctx context.Context, ref string) ([]byte, error)
-}
+type Backend = provider.SecretProvider

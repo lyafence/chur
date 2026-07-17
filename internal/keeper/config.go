@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/lyafence/chur/internal/keeper/bytesize"
+	"github.com/lyafence/chur/internal/bytesize"
 )
 
 type TLSMode string
@@ -57,6 +57,8 @@ func ConfigFromEnv() (*Config, error) {
 		cfg.TLSMode = TLSModeMTLS
 	case "self-signed", "":
 		cfg.TLSMode = TLSModeSelfSigned
+	default:
+		return nil, fmt.Errorf("invalid CHUR_KEEPER_TLS_MODE %q: must be 'self-signed' or 'mtls'", v)
 	}
 	if v := os.Getenv("CHUR_KEEPER_TLS_CERT_PATH"); v != "" {
 		cfg.TLSCertFile = v
@@ -90,14 +92,18 @@ func ConfigFromEnv() (*Config, error) {
 		cfg.ExecCommand = v
 	}
 	if v := os.Getenv("CHUR_KEEPER_EXEC_TIMEOUT"); v != "" {
-		if d, err := strconv.Atoi(v); err == nil && d > 0 {
-			cfg.ExecTimeout = time.Duration(d) * time.Second
+		d, err := strconv.Atoi(v)
+		if err != nil || d <= 0 {
+			return nil, fmt.Errorf("invalid CHUR_KEEPER_EXEC_TIMEOUT %q: must be a positive integer", v)
 		}
+		cfg.ExecTimeout = time.Duration(d) * time.Second
 	}
 	if v := os.Getenv("CHUR_KEEPER_EXEC_MAX_STDOUT"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n > 0 {
-			cfg.ExecMaxStdout = int64(n)
+		n, err := strconv.Atoi(v)
+		if err != nil || n <= 0 {
+			return nil, fmt.Errorf("invalid CHUR_KEEPER_EXEC_MAX_STDOUT %q: must be a positive integer", v)
 		}
+		cfg.ExecMaxStdout = int64(n)
 	}
 	return cfg, nil
 }

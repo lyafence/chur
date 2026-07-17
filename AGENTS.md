@@ -40,7 +40,7 @@
 | `internal/keeper/` | Keeper server, config, backend interface |
 | `internal/keeper/filesystem/` | Filesystem backend for chur-keeper |
 | `internal/keeper/exec/` | Exec backend for chur-keeper |
-| `internal/keeper/bytesize/` | Byte-size parsing utility for chur-keeper |
+| `internal/bytesize/` | Byte-size parsing utility |
 | `internal/providers/keeper/` | Keeper HTTP provider for chur-init |
 | `test/e2e/` | End-to-end tests |
 | `charts/chur/` | Helm chart for deploying the webhook |
