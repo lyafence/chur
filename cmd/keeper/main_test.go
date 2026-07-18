@@ -40,6 +40,7 @@ func TestKeeperIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { fsBackend.Close() })
 	cfg.Backend = fsBackend
 
 	ctx, cancel := context.WithCancel(context.Background())

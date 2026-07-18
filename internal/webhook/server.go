@@ -7,12 +7,15 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"time"
 
 	admissionv1 "k8s.io/api/admission/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
+
+	"github.com/lyafence/chur/internal/metrics"
 )
 
 type Server struct {
@@ -44,7 +47,7 @@ func NewServer(cfg *Config) (*Server, error) {
 		deserializer: serializer.NewCodecFactory(scheme).UniversalDeserializer(),
 		sem:          make(chan struct{}, maxConcurrent),
 	}
-	s.mutateFn = s.mutate
+	s.mutateFn = s.mutateWithMetrics
 	return s, nil
 }
 
@@ -59,12 +62,17 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// unbounded goroutine growth under load.
 	select {
 	case s.sem <- struct{}{}:
+		metrics.WebhookConcurrentRequests.Inc()
 	case <-r.Context().Done():
 		slog.WarnContext(r.Context(), "admission review rejected, server busy or request canceled")
+		metrics.WebhookAdmissionErrorsTotal.WithLabelValues("timeout").Inc()
 		http.Error(w, "server busy or request canceled", http.StatusServiceUnavailable)
 		return
 	}
-	defer func() { <-s.sem }()
+	defer func() {
+		<-s.sem
+		metrics.WebhookConcurrentRequests.Dec()
+	}()
 
 	slog.InfoContext(r.Context(), "admission review received", "path", r.URL.Path)
 
@@ -86,6 +94,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) mutate(ctx context.Context, review *admissionv1.AdmissionReview) *admissionv1.AdmissionReview {
+	start := time.Now()
 	resp := &admissionv1.AdmissionReview{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "admission.k8s.io/v1",
@@ -127,17 +136,38 @@ func (s *Server) mutate(ctx context.Context, review *admissionv1.AdmissionReview
 		return resp
 	}
 
-	patch, err := MutatePod(pod, s.cfg)
+	patch, ai, err := MutatePod(pod, s.cfg)
+
+	// Audit log: build structured fields from AuditInfo and call context.
+	if ai != nil {
+		ai.RequestUID = review.Request.UID
+	} else {
+		ai = &AuditInfo{
+			Namespace: pod.Namespace,
+			Pod:       pod.Name,
+		}
+	}
+	ai.DurationMs = time.Since(start).Milliseconds()
+
 	if err != nil {
+		reason := "internal"
 		code := http.StatusInternalServerError
 		if errors.Is(err, ErrValidation) {
+			reason = "validation_error"
 			code = http.StatusBadRequest
-			slog.WarnContext(ctx, "pod mutation validation failed",
-				"pod", pod.Name, "namespace", pod.Namespace, "error", err)
-		} else {
-			slog.ErrorContext(ctx, "failed to mutate pod",
-				"pod", pod.Name, "namespace", pod.Namespace, "error", err)
 		}
+		ai.Result = "error"
+		metrics.WebhookAdmissionErrorsTotal.WithLabelValues(reason).Inc()
+		metrics.WebhookAdmissionResultsTotal.WithLabelValues("error").Inc()
+		slog.WarnContext(ctx, "audit",
+			"request_uid", ai.RequestUID,
+			"namespace", ai.Namespace,
+			"pod", ai.Pod,
+			"provider", ai.Provider,
+			"duration_ms", ai.DurationMs,
+			"result", ai.Result,
+			"error", err,
+		)
 		resp.Response.Allowed = false
 		resp.Response.Result = &metav1.Status{
 			Code:    int32(code),
@@ -148,24 +178,52 @@ func (s *Server) mutate(ctx context.Context, review *admissionv1.AdmissionReview
 
 	// No mutation needed (pod lacks chur annotations).
 	if patch == nil {
+		ai.Result = "allowed"
+		metrics.WebhookAdmissionResultsTotal.WithLabelValues("allowed").Inc()
+		slog.InfoContext(ctx, "audit",
+			"request_uid", ai.RequestUID,
+			"namespace", ai.Namespace,
+			"pod", ai.Pod,
+			"duration_ms", ai.DurationMs,
+			"result", ai.Result,
+		)
 		resp.Response.Allowed = true
 		return resp
 	}
-
-	providerName := pod.Annotations[annotationProvider]
 
 	// Dry-run: return Allowed without patches. Webhooks must not actuate
 	// side effects (init container creation, file writes) during dry-run.
 	if review.Request.DryRun != nil && *review.Request.DryRun {
-		slog.InfoContext(ctx, "dry-run request, skipping mutation",
-			"pod", pod.Name, "namespace", pod.Namespace, "provider", providerName)
+		ai.Result = "allowed"
+		metrics.WebhookAdmissionResultsTotal.WithLabelValues("allowed").Inc()
+		slog.InfoContext(ctx, "audit",
+			"request_uid", ai.RequestUID,
+			"namespace", ai.Namespace,
+			"pod", ai.Pod,
+			"provider", ai.Provider,
+			"duration_ms", ai.DurationMs,
+			"result", ai.Result,
+		)
 		resp.Response.Allowed = true
 		return resp
 	}
 
+	metrics.WebhookProviderInjectionsTotal.WithLabelValues(ai.Provider).Inc()
+
 	patchBytes, err := json.Marshal(patch)
 	if err != nil {
-		slog.ErrorContext(ctx, "failed to marshal patch", "error", err)
+		ai.Result = "error"
+		metrics.WebhookAdmissionErrorsTotal.WithLabelValues("internal").Inc()
+		metrics.WebhookAdmissionResultsTotal.WithLabelValues("error").Inc()
+		slog.WarnContext(ctx, "audit",
+			"request_uid", ai.RequestUID,
+			"namespace", ai.Namespace,
+			"pod", ai.Pod,
+			"provider", ai.Provider,
+			"duration_ms", ai.DurationMs,
+			"result", ai.Result,
+			"error", err,
+		)
 		resp.Response.Allowed = false
 		resp.Response.Result = &metav1.Status{
 			Code:    http.StatusInternalServerError,
@@ -174,8 +232,16 @@ func (s *Server) mutate(ctx context.Context, review *admissionv1.AdmissionReview
 		return resp
 	}
 
-	slog.InfoContext(ctx, "pod mutated",
-		"pod", pod.Name, "namespace", pod.Namespace, "provider", providerName)
+	ai.Result = "mutated"
+	metrics.WebhookAdmissionResultsTotal.WithLabelValues("mutated").Inc()
+	slog.InfoContext(ctx, "audit",
+		"request_uid", ai.RequestUID,
+		"namespace", ai.Namespace,
+		"pod", ai.Pod,
+		"provider", ai.Provider,
+		"duration_ms", ai.DurationMs,
+		"result", ai.Result,
+	)
 
 	pt := admissionv1.PatchTypeJSONPatch
 	resp.Response.Allowed = true
@@ -192,11 +258,28 @@ func kindString(kind metav1.GroupVersionKind) string {
 	return fmt.Sprintf("%s/%s %s", kind.Group, kind.Version, kind.Kind)
 }
 
-// HealthHandler returns an HTTP handler with /healthz and /readyz endpoints.
+// mutateWithMetrics wraps mutate with Prometheus metric recording.
+func (s *Server) mutateWithMetrics(ctx context.Context, review *admissionv1.AdmissionReview) *admissionv1.AdmissionReview {
+	start := time.Now()
+	resp := s.mutate(ctx, review)
+
+	allowed := resp.Response != nil && resp.Response.Allowed
+	mutated := resp.Response != nil && resp.Response.PatchType != nil
+	metrics.WebhookAdmissionRequestsTotal.
+		WithLabelValues(fmt.Sprintf("%t", allowed), fmt.Sprintf("%t", mutated)).
+		Inc()
+
+	metrics.WebhookAdmissionDurationSeconds.Observe(time.Since(start).Seconds())
+
+	return resp
+}
+
+// HealthHandler returns an HTTP handler with /healthz, /readyz, and /metrics endpoints.
 func HealthHandler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", healthz)
 	mux.HandleFunc("/readyz", healthz)
+	mux.Handle("/metrics", metrics.Handler())
 	return mux
 }
 

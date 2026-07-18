@@ -9,6 +9,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
 
 	"github.com/lyafence/chur/internal/validate"
@@ -17,11 +18,13 @@ import (
 // validProviders lists all provider names that the webhook can pass to chur-init.
 // This is the webhook's own list — it does not depend on the provider registry
 // (which may have build-tag-gated entries like k8s).
+// Admission-time provider validation does NOT guarantee runtime availability —
+// chur-init may be built with a different build tag set.
 var validProviders = map[string]bool{
-	"env":    true,
-	"local":  true,
-	"k8s":    true,
-	"keeper": true,
+	"env":          true,
+	"local":        true,
+	"k8s":          true,
+	providerKeeper: true,
 }
 
 // ErrValidation indicates that the pod annotations failed validation.
@@ -29,6 +32,8 @@ var validProviders = map[string]bool{
 var ErrValidation = errors.New("validation error")
 
 const (
+	providerKeeper = "keeper"
+
 	annotationProvider         = "chur.io/provider"
 	annotationSecret           = "chur.io/secret-ref" //nolint:gosec // annotation key, not a credential
 	annotationSecretKey        = "chur.io/secret-key" //nolint:gosec // annotation key, not a credential
@@ -39,6 +44,16 @@ const (
 	opAdd = "add"
 )
 
+// AuditInfo contains structured metadata for audit logging.
+type AuditInfo struct {
+	RequestUID types.UID
+	Namespace  string
+	Pod        string
+	Provider   string
+	DurationMs int64
+	Result     string
+}
+
 // PatchOperation represents a single JSON Patch operation.
 type PatchOperation struct {
 	Op    string      `json:"op"`
@@ -48,19 +63,23 @@ type PatchOperation struct {
 
 // Config holds the mutable configuration for the webhook mutator.
 type Config struct {
-	VolumeSizeLimit        resource.Quantity
-	AllowedNamespaces      []string
-	InitImage              string
-	InitImagePullPolicy    corev1.PullPolicy
-	MaxSecretSize          string
-	LocalBasePath          string
-	MaxConcurrent          int
-	RunAsUser              int64
-	RunAsGroup             *int64
-	FSGroup                int64
-	KeeperServiceName      string
-	KeeperServiceNamespace string
-	KeeperServicePort      string
+	VolumeSizeLimit            resource.Quantity
+	AllowedNamespaces          []string
+	InitImage                  string
+	InitImagePullPolicy        corev1.PullPolicy
+	MaxSecretSize              string
+	LocalBasePath              string
+	MaxConcurrent              int
+	RunAsUser                  int64
+	RunAsGroup                 *int64
+	FSGroup                    int64
+	KeeperServiceName          string
+	KeeperServiceNamespace     string
+	KeeperServicePort          string
+	KeeperTLSCertPath          string
+	KeeperTLSKeyPath           string
+	KeeperServerCA             string
+	KeeperClientCertSecretName string
 }
 
 // DefaultConfig returns a Config with safe defaults.
@@ -82,13 +101,16 @@ func DefaultConfig() *Config {
 // reservedInitEnv lists keys that the webhook manages itself and that must
 // not be overridden via chur.io/provider-env.
 var reservedInitEnv = map[string]bool{
-	"CHUR_PROVIDER":        true,
-	"CHUR_SECRET_REF":      true,
-	"CHUR_SECRET_KEY":      true,
-	"CHUR_MOUNT_PATH":      true,
-	"CHUR_MAX_SECRET_SIZE": true,
-	"CHUR_LOCAL_BASE_PATH": true,
-	"CHUR_KEEPER_URL":      true,
+	"CHUR_PROVIDER":             true,
+	"CHUR_SECRET_REF":           true,
+	"CHUR_SECRET_KEY":           true,
+	"CHUR_MOUNT_PATH":           true,
+	"CHUR_MAX_SECRET_SIZE":      true,
+	"CHUR_LOCAL_BASE_PATH":      true,
+	"CHUR_KEEPER_URL":           true,
+	"CHUR_KEEPER_TLS_CERT_PATH": true,
+	"CHUR_KEEPER_TLS_KEY_PATH":  true,
+	"CHUR_KEEPER_SERVER_CA":     true,
 }
 
 func validProviderEnvKey(k string) bool {
@@ -129,11 +151,12 @@ func parseProviderEnv(annotation string) ([]corev1.EnvVar, error) {
 }
 
 // MutatePod adds a tmpfs volume and init container to the pod spec when the
-// chur annotations are present. It returns nil, nil when no mutation is
+// chur annotations are present. It returns nil, nil, nil when no mutation is
 // required. All user-controlled values are strictly validated before use.
-func MutatePod(pod *corev1.Pod, cfg *Config) ([]PatchOperation, error) {
+// The returned AuditInfo is non-nil when chur annotations are present.
+func MutatePod(pod *corev1.Pod, cfg *Config) ([]PatchOperation, *AuditInfo, error) {
 	if pod == nil || pod.Annotations == nil {
-		return nil, nil
+		return nil, nil, nil
 	}
 	if cfg == nil {
 		cfg = DefaultConfig()
@@ -148,33 +171,41 @@ func MutatePod(pod *corev1.Pod, cfg *Config) ([]PatchOperation, error) {
 			}
 		}
 		if !allowed {
-			return nil, nil
+			return nil, nil, nil
 		}
 	}
 
 	providerName, ok := pod.Annotations[annotationProvider]
 	if !ok {
-		return nil, nil
+		return nil, nil, nil
 	}
+
+	// Build audit info from pod metadata and annotations.
+	ai := &AuditInfo{
+		Namespace: pod.Namespace,
+		Pod:       pod.Name,
+		Provider:  providerName,
+	}
+
 	if providerName == "" {
-		return nil, fmt.Errorf("%w: %s annotation must not be empty", ErrValidation, annotationProvider)
+		return nil, ai, fmt.Errorf("%w: %s annotation must not be empty", ErrValidation, annotationProvider)
 	}
 	if !validProviders[providerName] {
-		return nil, fmt.Errorf("%w: unknown provider %q", ErrValidation, providerName)
+		return nil, ai, fmt.Errorf("%w: unknown provider %q", ErrValidation, providerName)
 	}
 
 	secretRef := pod.Annotations[annotationSecret]
 	validator := validate.ValidateSecretRef
-	if providerName == "keeper" {
+	if providerName == providerKeeper {
 		validator = validate.ValidateKeeperRef
 	}
 	if err := validator(secretRef); err != nil {
-		return nil, fmt.Errorf("%w: invalid %s: %w", ErrValidation, annotationSecret, err)
+		return nil, ai, fmt.Errorf("%w: invalid %s: %w", ErrValidation, annotationSecret, err)
 	}
 
 	secretKey := pod.Annotations[annotationSecretKey]
 	if err := validate.ValidateSecretKey(secretKey); err != nil {
-		return nil, fmt.Errorf("%w: invalid %s: %w", ErrValidation, annotationSecretKey, err)
+		return nil, ai, fmt.Errorf("%w: invalid %s: %w", ErrValidation, annotationSecretKey, err)
 	}
 
 	mountPath := pod.Annotations[annotationMount]
@@ -182,7 +213,7 @@ func MutatePod(pod *corev1.Pod, cfg *Config) ([]PatchOperation, error) {
 		mountPath = "/secrets"
 	}
 	if err := validate.ValidateMountPath(mountPath); err != nil {
-		return nil, fmt.Errorf("%w: invalid %s: %w", ErrValidation, annotationMount, err)
+		return nil, ai, fmt.Errorf("%w: invalid %s: %w", ErrValidation, annotationMount, err)
 	}
 
 	// Determine the group that will own the shared tmpfs volume.
@@ -257,17 +288,26 @@ func MutatePod(pod *corev1.Pod, cfg *Config) ([]PatchOperation, error) {
 		initEnv = append(initEnv, corev1.EnvVar{Name: "CHUR_SECRET_KEY", Value: secretKey})
 	}
 
-	if providerName == "keeper" {
+	if providerName == providerKeeper {
 		if cfg.KeeperServiceName != "" {
 			url := fmt.Sprintf("https://%s.%s.svc:%s", cfg.KeeperServiceName, cfg.KeeperServiceNamespace, cfg.KeeperServicePort)
 			initEnv = append(initEnv, corev1.EnvVar{Name: "CHUR_KEEPER_URL", Value: url})
+		}
+		if cfg.KeeperTLSCertPath != "" {
+			initEnv = append(initEnv, corev1.EnvVar{Name: "CHUR_KEEPER_TLS_CERT_PATH", Value: cfg.KeeperTLSCertPath})
+		}
+		if cfg.KeeperTLSKeyPath != "" {
+			initEnv = append(initEnv, corev1.EnvVar{Name: "CHUR_KEEPER_TLS_KEY_PATH", Value: cfg.KeeperTLSKeyPath})
+		}
+		if cfg.KeeperServerCA != "" {
+			initEnv = append(initEnv, corev1.EnvVar{Name: "CHUR_KEEPER_SERVER_CA", Value: cfg.KeeperServerCA})
 		}
 		if pod.Annotations[annotationKeeperSkipVerify] == "1" || pod.Annotations[annotationKeeperSkipVerify] == "true" {
 			initEnv = append(initEnv, corev1.EnvVar{Name: "CHUR_KEEPER_SKIP_VERIFY", Value: "1"})
 		}
 		extraEnv, err := parseProviderEnv(pod.Annotations[annotationProviderEnv])
 		if err != nil {
-			return nil, err
+			return nil, ai, err
 		}
 		initEnv = append(initEnv, extraEnv...)
 	}
@@ -328,6 +368,55 @@ func MutatePod(pod *corev1.Pod, cfg *Config) ([]PatchOperation, error) {
 			ReadOnly:  true,
 		})
 	}
+	if providerName == providerKeeper && cfg.KeeperClientCertSecretName != "" {
+		clientVolName := "chur-keeper-client-tls"
+		// cert and key must be in the same secret directory (Helm mounts the secret as a whole).
+		if !volumeExists(pod.Spec.Volumes, clientVolName) {
+			if len(pod.Spec.Volumes) == 0 {
+				patches = append(patches, PatchOperation{
+					Op:   opAdd,
+					Path: "/spec/volumes",
+					Value: []corev1.Volume{{
+						Name: clientVolName,
+						VolumeSource: corev1.VolumeSource{
+							Secret: &corev1.SecretVolumeSource{
+								SecretName:  cfg.KeeperClientCertSecretName,
+								DefaultMode: ptr.To[int32](0444),
+							},
+						},
+					}},
+				})
+			} else {
+				patches = append(patches, PatchOperation{
+					Op:   opAdd,
+					Path: "/spec/volumes/-",
+					Value: corev1.Volume{
+						Name: clientVolName,
+						VolumeSource: corev1.VolumeSource{
+							Secret: &corev1.SecretVolumeSource{
+								SecretName:  cfg.KeeperClientCertSecretName,
+								DefaultMode: ptr.To[int32](0444),
+							},
+						},
+					},
+				})
+			}
+		}
+		mountDir := cfg.KeeperTLSCertPath
+		if mountDir == "" {
+			mountDir = "/etc/chur-keeper/client-tls"
+		}
+		if idx := strings.LastIndex(mountDir, "/"); idx >= 0 {
+			mountDir = mountDir[:idx]
+		}
+		if !volumeMountExists(initContainer.VolumeMounts, clientVolName, mountDir) {
+			initContainer.VolumeMounts = append(initContainer.VolumeMounts, corev1.VolumeMount{
+				Name:      clientVolName,
+				MountPath: mountDir,
+				ReadOnly:  true,
+			})
+		}
+	}
 	if !initContainerExists(pod.Spec.InitContainers, initContainerName) {
 		if len(pod.Spec.InitContainers) == 0 {
 			patches = append(patches, PatchOperation{
@@ -372,7 +461,7 @@ func MutatePod(pod *corev1.Pod, cfg *Config) ([]PatchOperation, error) {
 		}
 	}
 
-	return patches, nil
+	return patches, ai, nil
 }
 
 func volumeExists(volumes []corev1.Volume, name string) bool {

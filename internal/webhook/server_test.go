@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -425,6 +427,33 @@ func TestServer_Mutate_AllowsPod_NoAnnotations(t *testing.T) {
 	}
 }
 
+func TestHealthHandler_Metrics(t *testing.T) {
+	t.Parallel()
+	h := HealthHandler()
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL + "/metrics")
+	if err != nil {
+		t.Fatalf("GET /metrics: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	ct := resp.Header.Get("Content-Type")
+	if !strings.HasPrefix(ct, "text/plain") {
+		t.Fatalf("expected text/plain content-type, got %q", ct)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read body: %v", err)
+	}
+	if !strings.Contains(string(body), "chur_webhook_concurrent_requests") {
+		t.Errorf("expected chur metric in /metrics body")
+	}
+}
+
 func TestHealthHandler_UnknownPath(t *testing.T) {
 	t.Parallel()
 	h := HealthHandler()
@@ -483,4 +512,65 @@ func TestServer_ConcurrencyLimit(t *testing.T) {
 		t.Fatalf("expected 503 when busy, got %d", rec.Code)
 	}
 	close(release)
+}
+
+func TestServer_AuditLogStructure(t *testing.T) {
+	var buf bytes.Buffer
+	oldHandler := slog.Default().Handler()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo})))
+	defer slog.SetDefault(slog.New(oldHandler))
+
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-pod",
+			Namespace: "default",
+			Annotations: map[string]string{
+				annotationProvider: "env",
+				annotationSecret:   "my-secret",
+			},
+		},
+		Spec: corev1.PodSpec{
+			Containers: []corev1.Container{{Name: "app", Image: "app"}},
+		},
+	}
+
+	review := admissionv1.AdmissionReview{
+		Request: &admissionv1.AdmissionRequest{
+			UID: "audit-test-uid-12345",
+			Kind: metav1.GroupVersionKind{
+				Group: "", Version: "v1", Kind: "Pod",
+			},
+			Object: runtime.RawExtension{Raw: mustEncodePod(t, pod)},
+		},
+	}
+
+	srv := newTestServer(t)
+	body, _ := json.Marshal(review)
+	req := httptest.NewRequest(http.MethodPost, "/mutate", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, `audit-test-uid-12345`) {
+		t.Error("expected request_uid in audit log")
+	}
+	if !strings.Contains(output, `default`) {
+		t.Error("expected namespace in audit log")
+	}
+	if !strings.Contains(output, `test-pod`) {
+		t.Error("expected pod name in audit log")
+	}
+	if !strings.Contains(output, `env`) {
+		t.Error("expected provider in audit log")
+	}
+	if !strings.Contains(output, `duration_ms`) {
+		t.Error("expected duration_ms in audit log")
+	}
+	if !strings.Contains(output, `mutated`) {
+		t.Error("expected result in audit log")
+	}
 }

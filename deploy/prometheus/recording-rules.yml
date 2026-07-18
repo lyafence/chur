@@ -1,0 +1,29 @@
+groups:
+  - name: chur
+    interval: 30s
+    rules:
+      - record: chur:webhook:error_ratio:rate5m
+        expr: |
+          (sum without(reason) (rate(chur_webhook_admission_errors_total[5m]))
+          /
+          sum without(allowed, mutated) (rate(chur_webhook_admission_requests_total[5m])))
+          or vector(0)
+        labels:
+          severity: warning
+
+      - record: chur:webhook:latency_p99:rate5m
+        expr: |
+          histogram_quantile(0.99,
+            rate(chur_webhook_admission_duration_seconds_bucket[5m])
+          )
+        labels:
+          severity: warning
+
+      - record: chur:keeper:error_ratio:rate5m
+        expr: |
+          (sum without(status) (rate(chur_keeper_requests_total{status="error"}[5m]))
+          /
+          sum without(status) (rate(chur_keeper_requests_total[5m])))
+          or vector(0)
+        labels:
+          severity: warning

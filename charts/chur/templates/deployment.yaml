@@ -63,6 +63,16 @@ spec:
               value: "{{ .Release.Namespace }}"
             - name: CHUR_KEEPER_SERVICE_PORT
               value: "{{ .Values.keeper.service.port }}"
+            {{- if .Values.keeper.mtls.enabled }}
+            - name: CHUR_KEEPER_TLS_CERT_PATH
+              value: "{{ .Values.keeper.mtls.clientCert.mountPath }}/{{ .Values.keeper.mtls.clientCert.certKey }}"
+            - name: CHUR_KEEPER_TLS_KEY_PATH
+              value: "{{ .Values.keeper.mtls.clientCert.mountPath }}/{{ .Values.keeper.mtls.clientCert.keyKey }}"
+            - name: CHUR_KEEPER_SERVER_CA
+              value: "{{ .Values.keeper.mtls.clientCAPath }}"
+            - name: CHUR_KEEPER_CLIENT_CERT_SECRET_NAME
+              value: "{{ .Values.keeper.mtls.clientCert.secretName }}"
+            {{- end }}
           {{- end }}
           volumeMounts:
             - name: tls

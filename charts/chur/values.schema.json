@@ -439,6 +439,10 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Enable mTLS client cert injection for chur-init"
+            },
             "clientCA": {
               "type": "object",
               "additionalProperties": false,
@@ -456,6 +460,32 @@
                   "description": "Mount path for the client CA file"
                 }
               }
+            },
+            "clientCert": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "secretName": {
+                  "type": "string",
+                  "description": "Name of a Kubernetes Secret containing the client cert for chur-init"
+                },
+                "mountPath": {
+                  "type": "string",
+                  "description": "Mount path for the client certificate"
+                },
+                "certKey": {
+                  "type": "string",
+                  "description": "Key name in the Secret for the TLS cert"
+                },
+                "keyKey": {
+                  "type": "string",
+                  "description": "Key name in the Secret for the TLS key"
+                }
+              }
+            },
+            "clientCAPath": {
+              "type": "string",
+              "description": "Path to the server CA certificate for chur-init"
             }
           }
         },

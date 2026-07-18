@@ -25,6 +25,7 @@ type Config struct {
 	ClientCAFile  string
 	BackendType   string
 	Backend       Backend
+	FSRoot        string
 	MaxSecretSize int64
 	MaxConcurrent int
 	ExecCommand   string
@@ -37,6 +38,7 @@ func DefaultConfig() *Config {
 		Listen:        ":9443",
 		HealthListen:  ":9444",
 		TLSMode:       TLSModeSelfSigned,
+		FSRoot:        "/var/lib/chur-keeper/secrets",
 		MaxSecretSize: 1 << 20,
 		MaxConcurrent: 100,
 		ExecTimeout:   10 * time.Second,
@@ -73,6 +75,9 @@ func ConfigFromEnv() (*Config, error) {
 		cfg.BackendType = v
 	} else {
 		cfg.BackendType = "filesystem"
+	}
+	if v := os.Getenv("CHUR_KEEPER_BACKEND_FS_ROOT"); v != "" {
+		cfg.FSRoot = v
 	}
 	if v := os.Getenv("CHUR_KEEPER_MAX_SECRET_SIZE"); v != "" {
 		n, err := bytesize.Parse(v)

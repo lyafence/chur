@@ -130,8 +130,11 @@ Trust assumptions:
 ### T8: Information disclosure through logs
 
 - **Scenario:** Secret values are logged.
-- **Mitigation:** chur logs structured metadata only (provider, reference, path,
-  bytes). Secret values are never logged.
+- **Mitigation:** chur logs structured metadata only (provider, namespace, pod,
+  duration, result). Secret values, secret refs, and secret keys are never
+  logged. The webhook exposes Prometheus metrics on its health port (`/metrics`)
+  — these contain only aggregate counters and histograms, no identifying
+  information.
 
 ### T9: Secret leak or abuse via keeper backend
 
@@ -192,6 +195,8 @@ The following are intentionally out of scope:
 - Advanced audit capabilities beyond structured JSON logs.
 - Control-plane components, CRDs, or controllers.
 - Automated mTLS certificate rotation for `chur-keeper`.
+- In-cluster Prometheus or alertmanager deployment (metrics are exposed for
+  existing monitoring infrastructure).
 - Protection against an attacker with root access to the worker node (they can
   read the tmpfs directly via the container runtime or `/proc`).
 - Protection against eBPF, `ptrace`, or memory dump attacks on the node — these
@@ -205,6 +210,6 @@ The following are intentionally out of scope:
 
 chur emits structured JSON logs from both `chur-webhook` and `chur-init`. These
 logs are the basic audit trail: they record when a secret is injected, by which
-provider, and for which reference. Advanced audit capabilities (for example,
-streaming to a SIEM or Kubernetes Audit Events integration) are not implemented
-in v0.3+ (as of this writing).
+provider, and the duration. Secret references and keys are excluded from logs.
+Advanced audit capabilities (for example, streaming to a SIEM or Kubernetes
+Audit Events integration) are not implemented in v0.3+ (as of this writing).

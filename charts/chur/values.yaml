@@ -165,6 +165,10 @@ keeper:
     # keeper.tls.keyPath is the path to the TLS key inside the keeper container.
     keyPath: "/etc/chur-keeper/tls/tls.key"
   mtls:
+    # keeper.mtls.enabled enables automatic mTLS client certificate injection for chur-init.
+    # When enabled, the webhook automatically sets CHUR_KEEPER_TLS_CERT_PATH,
+    # CHUR_KEEPER_TLS_KEY_PATH, and CHUR_KEEPER_SERVER_CA on chur-init.
+    enabled: false
     clientCA:
       # keeper.mtls.clientCA.existingSecret is the name of a Secret containing the CA bundle
       # for verifying incoming mTLS client certificates.
@@ -174,10 +178,24 @@ keeper:
       existingConfigMap: ""
       # keeper.mtls.clientCA.path is the mount path for the client CA file.
       path: "/etc/chur-keeper/client-ca/ca.crt"
+    # keeper.mtls.clientCert configures the client certificate for chur-init → keeper mTLS.
+    clientCert:
+      # keeper.mtls.clientCert.secretName is the name of a Secret containing the client
+      # certificate for chur-init. Use cert-manager or pre-create this Secret.
+      # When empty, the webhook does not auto-mount the secret volume.
+      secretName: ""
+      # keeper.mtls.clientCert.mountPath is the mount path for the client certificate.
+      mountPath: "/etc/chur-keeper/client-tls"
+      # keeper.mtls.clientCert.certKey is the key name in the Secret for the TLS cert.
+      certKey: "tls.crt"
+      # keeper.mtls.clientCert.keyKey is the key name in the Secret for the TLS key.
+      keyKey: "tls.key"
+    # keeper.mtls.clientCAPath is the path to the server CA certificate for chur-init
+    # to verify the keeper server identity.
+    clientCAPath: "/etc/chur-keeper/server-ca/ca.crt"
   clientTLS:
     # keeper.clientTLS.existingSecret mounts a Secret with tls.crt and tls.key into the
     # keeper pod for its server identity (alternative to tls.existingSecret).
-    # For client-side certificates in chur-init, use extraVolumes + chur.io/provider-env.
     existingSecret: ""
   # keeper.extraVolumes is a list of extra volumes for the keeper pod.
   extraVolumes: []

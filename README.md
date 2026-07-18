@@ -210,8 +210,11 @@ be supplied through annotations:
 | `chur.io/keeper-skip-verify: "1"` or `"true"` | Injects `CHUR_KEEPER_SKIP_VERIFY=1` (dev only) |
 | `chur.io/provider-env: '{"CHUR_KEEPER_SERVER_CA":"/etc/chur-keeper/ca.crt"}'` | Injects arbitrary `CHUR_*` env vars into `chur-init` |
 
-In production, deploy keeper with mTLS and use `chur.io/provider-env` to point
-`chur-init` at mounted client certificates.
+For production mTLS, deploy keeper with `keeper.mtls.enabled=true`. The webhook
+automatically injects `CHUR_KEEPER_TLS_CERT_PATH`, `CHUR_KEEPER_TLS_KEY_PATH`,
+and `CHUR_KEEPER_SERVER_CA` into chur-init — no `chur.io/provider-env` annotation
+needed. When `keeper.mtls.clientCert.secretName` is set, the webhook also mounts
+the client certificate secret into the init container.
 
 The `exec` backend runs a single executable with the ref as its argument.
 The official keeper image is based on distroless and contains only the
@@ -245,6 +248,10 @@ init container configuration), see [`.env.example`](.env.example).
 | `CHUR_KEEPER_MAX_SECRET_SIZE` | `1Mi` | keeper | Maximum response size |
 | `CHUR_KEEPER_EXEC_COMMAND` | — | keeper | Command to execute (exec backend) |
 | `CHUR_KEEPER_BACKEND_FS_ROOT` | `/var/lib/chur-keeper/secrets` | keeper | Root directory (filesystem backend) |
+| `CHUR_KEEPER_TLS_CERT_PATH` | — | webhook | Client TLS cert path for chur-init (keeper mTLS, auto-injected) |
+| `CHUR_KEEPER_TLS_KEY_PATH` | — | webhook | Client TLS key path for chur-init (keeper mTLS, auto-injected) |
+| `CHUR_KEEPER_SERVER_CA` | — | webhook | Server CA path for verifying keeper (keeper mTLS, auto-injected) |
+| `CHUR_KEEPER_CLIENT_CERT_SECRET_NAME` | — | webhook | Kubernetes Secret name with client cert for chur-init (auto-mounted) |
 
 ## RBAC Requirements
 

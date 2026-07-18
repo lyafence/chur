@@ -15,6 +15,7 @@ func mustCreate(t *testing.T, root string, maxSize int64) *FSBackend {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { b.Close() })
 	return b
 }
 

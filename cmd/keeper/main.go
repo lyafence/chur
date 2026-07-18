@@ -27,13 +27,9 @@ func main() {
 
 	switch cfg.BackendType {
 	case "filesystem":
-		root := os.Getenv("CHUR_KEEPER_BACKEND_FS_ROOT")
-		if root == "" {
-			root = "/var/lib/chur-keeper/secrets"
-		}
-		fsBackend, err := filesystem.NewWithMaxSize(root, cfg.MaxSecretSize)
+		fsBackend, err := filesystem.NewWithMaxSize(cfg.FSRoot, cfg.MaxSecretSize)
 		if err != nil {
-			slog.ErrorContext(ctx, "filesystem backend: open root failed", "root", root, "error", err)
+			slog.ErrorContext(ctx, "filesystem backend: open root failed", "root", cfg.FSRoot, "error", err)
 			os.Exit(1)
 		}
 		cfg.Backend = fsBackend

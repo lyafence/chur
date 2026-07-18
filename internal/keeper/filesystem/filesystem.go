@@ -20,7 +20,7 @@ func (b *FSBackend) Close() error {
 	return b.root.Close()
 }
 
-func (b *FSBackend) GetSecret(_ context.Context, ref string) ([]byte, error) {
+func (b *FSBackend) GetSecret(ctx context.Context, ref string) ([]byte, error) {
 	if err := validate.ValidateKeeperRef(ref); err != nil {
 		return nil, fmt.Errorf("filesystem: invalid ref: %w", err)
 	}
@@ -31,14 +31,30 @@ func (b *FSBackend) GetSecret(_ context.Context, ref string) ([]byte, error) {
 	}
 	defer f.Close()
 
-	data, err := io.ReadAll(io.LimitReader(f, b.maxSize+1))
-	if err != nil {
-		return nil, fmt.Errorf("filesystem: read %q: %w", ref, err)
+	type readResult struct {
+		data []byte
+		err  error
 	}
-	if int64(len(data)) > b.maxSize {
-		return nil, fmt.Errorf("filesystem: secret exceeds max size")
+	ch := make(chan readResult, 1)
+	// goroutine terminates after io.ReadAll completes (bounded by maxSize+1).
+	// ctx cancellation only prevents waiting for the result, not the read itself.
+	go func() {
+		data, err := io.ReadAll(io.LimitReader(f, b.maxSize+1))
+		ch <- readResult{data, err}
+	}()
+
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case r := <-ch:
+		if r.err != nil {
+			return nil, fmt.Errorf("filesystem: read %q: %w", ref, r.err)
+		}
+		if int64(len(r.data)) > b.maxSize {
+			return nil, fmt.Errorf("filesystem: secret exceeds max size")
+		}
+		return r.data, nil
 	}
-	return data, nil
 }
 
 func NewWithMaxSize(root string, maxSize int64) (*FSBackend, error) {

@@ -14,15 +14,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/lyafence/chur/internal/metrics"
 	churtls "github.com/lyafence/chur/internal/tls"
 )
-
-type backendError struct {
-	msg  string
-	code int
-}
-
-func (e *backendError) Error() string { return e.msg }
 
 type getRequest struct {
 	Ref string `json:"ref"`
@@ -40,7 +34,8 @@ func Serve(ctx context.Context, cfg *Config, tlsCfg *tls.Config, listener net.Li
 
 	mux := http.NewServeMux()
 	sem := make(chan struct{}, cfg.MaxConcurrent)
-	mux.HandleFunc("/v1/secrets/get", handleGetSecret(cfg.Backend, cfg.MaxSecretSize, sem).ServeHTTP)
+	backendName := cfg.Backend.Name()
+	mux.HandleFunc("/v1/secrets/get", handleGetSecret(cfg.Backend, cfg.MaxSecretSize, sem, backendName).ServeHTTP)
 
 	srv := &http.Server{
 		Handler:           mux,
@@ -58,6 +53,7 @@ func Serve(ctx context.Context, cfg *Config, tlsCfg *tls.Config, listener net.Li
 	if cfg.HealthListen != "" {
 		healthMux := http.NewServeMux()
 		healthMux.HandleFunc("/healthz", healthz)
+		healthMux.Handle("/metrics", metrics.Handler())
 		healthSrv = &http.Server{
 			Addr:              cfg.HealthListen,
 			Handler:           healthMux,
@@ -129,8 +125,10 @@ func healthz(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handleGetSecret(b Backend, maxSize int64, sem chan struct{}) http.HandlerFunc {
+func handleGetSecret(b Backend, maxSize int64, sem chan struct{}, backendName string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+
 		if r.Method != http.MethodPost {
 			writeError(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
@@ -142,41 +140,72 @@ func handleGetSecret(b Backend, maxSize int64, sem chan struct{}) http.HandlerFu
 
 		select {
 		case sem <- struct{}{}:
+			metrics.KeeperConcurrentRequests.Inc()
 		case <-r.Context().Done():
 			writeError(w, "server busy", http.StatusServiceUnavailable)
 			return
 		}
-		defer func() { <-sem }()
+		defer func() {
+			<-sem
+			metrics.KeeperConcurrentRequests.Dec()
+		}()
 
 		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 
 		var req getRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			metrics.KeeperRequestsTotal.WithLabelValues(backendName, "error").Inc()
+			metrics.KeeperRequestDurationSeconds.WithLabelValues(backendName).Observe(time.Since(start).Seconds())
 			writeError(w, "invalid request body", http.StatusBadRequest)
 			return
 		}
 		if req.Ref == "" {
+			metrics.KeeperRequestsTotal.WithLabelValues(backendName, "error").Inc()
+			metrics.KeeperRequestDurationSeconds.WithLabelValues(backendName).Observe(time.Since(start).Seconds())
 			writeError(w, "ref is required", http.StatusBadRequest)
 			return
 		}
 
 		data, err := b.GetSecret(r.Context(), req.Ref)
+		durationMs := time.Since(start).Milliseconds()
+
 		if err != nil {
-			code := http.StatusInternalServerError
-			var bErr *backendError
-			if errors.As(err, &bErr) && bErr.code != 0 {
-				code = bErr.code
-			}
-			slog.WarnContext(r.Context(), "keeper: backend get failed", "ref", req.Ref, "error", err)
-			writeError(w, err.Error(), code)
+			slog.WarnContext(r.Context(), "keeper: backend get failed",
+				"ref", req.Ref,
+				"backend", backendName,
+				"duration_ms", durationMs,
+				"result", "error",
+				"error", err,
+			)
+			metrics.KeeperRequestsTotal.WithLabelValues(backendName, "error").Inc()
+			metrics.KeeperRequestDurationSeconds.WithLabelValues(backendName).Observe(time.Since(start).Seconds())
+			writeError(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
 		if int64(len(data)) > maxSize {
-			slog.WarnContext(r.Context(), "keeper: secret exceeds max size", "ref", req.Ref, "size", len(data))
+			slog.WarnContext(r.Context(), "keeper: secret exceeds max size",
+				"ref", req.Ref,
+				"backend", backendName,
+				"duration_ms", durationMs,
+				"result", "error",
+				"size", len(data),
+			)
+			metrics.KeeperRequestsTotal.WithLabelValues(backendName, "error").Inc()
+			metrics.KeeperRequestDurationSeconds.WithLabelValues(backendName).Observe(time.Since(start).Seconds())
 			writeError(w, "secret exceeds max size", http.StatusRequestEntityTooLarge)
 			return
 		}
+
+		slog.InfoContext(r.Context(), "keeper: secret fetched",
+			"ref", req.Ref,
+			"backend", backendName,
+			"duration_ms", durationMs,
+			"result", "ok",
+			"size", len(data),
+		)
+		metrics.KeeperRequestsTotal.WithLabelValues(backendName, "ok").Inc()
+		metrics.KeeperRequestDurationSeconds.WithLabelValues(backendName).Observe(time.Since(start).Seconds())
 
 		w.Header().Set("Content-Type", "application/octet-stream")
 		w.WriteHeader(http.StatusOK)

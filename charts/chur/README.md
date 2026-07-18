@@ -89,9 +89,15 @@ The `keeper` section controls the optional `chur-keeper` deployment:
 | `keeper.tls.existingSecret` | `""` | Existing TLS Secret name (required for `mtls`) |
 | `keeper.tls.certPath` | `/etc/chur-keeper/tls/tls.crt` | TLS cert path inside keeper container |
 | `keeper.tls.keyPath` | `/etc/chur-keeper/tls/tls.key` | TLS key path inside keeper container |
+| `keeper.mtls.enabled` | `false` | Enable mTLS client cert injection for chur-init |
 | `keeper.mtls.clientCA.existingSecret` | `""` | Existing Secret with CA bundle for verifying mTLS client certs |
 | `keeper.mtls.clientCA.existingConfigMap` | `""` | Alternative to existingSecret — ConfigMap with CA bundle |
 | `keeper.mtls.clientCA.path` | `/etc/chur-keeper/client-ca/ca.crt` | Client CA mount path inside keeper container |
+| `keeper.mtls.clientCert.secretName` | `""` | Kubernetes Secret name with client cert for chur-init |
+| `keeper.mtls.clientCert.mountPath` | `/etc/chur-keeper/client-tls` | Mount path for client cert |
+| `keeper.mtls.clientCert.certKey` | `tls.crt` | Key name in Secret for the TLS cert |
+| `keeper.mtls.clientCert.keyKey` | `tls.key` | Key name in Secret for the TLS key |
+| `keeper.mtls.clientCAPath` | `/etc/chur-keeper/server-ca/ca.crt` | Path to server CA for chur-init |
 | `keeper.clientTLS.existingSecret` | `""` | Existing Secret (tls.crt + tls.key) for keeper's server TLS identity |
 | `keeper.service.type` | `ClusterIP` | Keeper service type |
 | `keeper.service.port` | `9443` | Keeper service HTTPS port |
@@ -141,31 +147,12 @@ Additional keeper annotations:
 | Annotation | Effect |
 |---|---|
 | `chur.io/keeper-skip-verify: "1"` or `"true"` | Injects `CHUR_KEEPER_SKIP_VERIFY=1` (dev, skips TLS verification) |
-| `chur.io/provider-env: '{"CHUR_KEEPER_SERVER_CA":"/etc/chur-keeper/ca.crt"}'` | Injects arbitrary `CHUR_*` env vars into `chur-init` |
 
-Note: To provision client-side certificates for `chur-init`, mount a Secret via `extraVolumes` on the application Pod and configure paths through the `chur.io/provider-env` annotation:
-
-```yaml
-apiVersion: v1
-kind: Pod
-metadata:
-  annotations:
-    chur.io/provider: keeper
-    chur.io/secret-ref: prod/db/password
-    chur.io/provider-env: |
-      {"CHUR_KEEPER_SERVER_CA":"/etc/keeper-ca/ca.crt"}
-spec:
-  volumes:
-    - name: keeper-ca
-      secret:
-        secretName: keeper-server-ca
-  initContainers:
-    - name: chur-init
-      volumeMounts:
-        - name: keeper-ca
-          mountPath: /etc/keeper-ca
-          readOnly: true
-```
+When `keeper.mtls.enabled=true`, the webhook automatically injects
+`CHUR_KEEPER_TLS_CERT_PATH`, `CHUR_KEEPER_TLS_KEY_PATH`, and
+`CHUR_KEEPER_SERVER_CA` — no `chur.io/provider-env` annotation needed
+for basic mTLS. Set `keeper.mtls.clientCert.secretName` to have the
+webhook auto-mount the client certificate secret into the init container.
 
 ## Values
 

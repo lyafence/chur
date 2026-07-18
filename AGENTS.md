@@ -36,6 +36,7 @@
 | `internal/providers/env/` | Environment variable provider |
 | `internal/providers/local/` | Local file provider (bare-metal) |
 | `internal/providers/k8s/` | Kubernetes Secret provider |
+| `internal/metrics/` | Prometheus metric declarations and custom registry |
 | `internal/validate/` | Input validation (filename-safe refs, secret keys) |
 | `internal/keeper/` | Keeper server, config, backend interface |
 | `internal/keeper/filesystem/` | Filesystem backend for chur-keeper |
@@ -152,7 +153,7 @@ long-running background services unless they solve a demonstrated user problem.
 - TLS: `server` and `mtls` modes, self-signed cert generation for dev.
 
 **chur-keeper (optional):**
-- Binary: `cmd/keeper/`, 10 MB stdlib-only.
+- Binary: `cmd/keeper/`, 9 MB. stdlib-only except prometheus client for `/metrics`.
 - Backends: `filesystem` and `exec` via `Backend` interface.
 - Providers: `internal/providers/keeper/` — HTTP client with mTLS.
 - Helm chart: `keeper.enabled=false`, conditional env injection.
@@ -173,23 +174,23 @@ Python-based CLIs (aws, gcloud, az) require a Python runtime — use a custom im
 
 Only if demonstrated demand:
 
-- Prometheus `/metrics` endpoint.
 - Sidecar hot-reload (inotify + polling).
-- Advanced audit logging.
 
 ## Architecture Overview
 
 ```
-Phase 1 ✅                     Phase 2 (only if demand)
-┌──────────────────────┐       ┌──────────────────────┐
-│  env                 │       │  optional runtime    │
-│  local               │       │  improvements        │
-│  k8s                 │ ───►  │  (Prometheus /       │
-│  keeper              │       │   hot-reload /       │
-│  webhook             │       │   audit logging)     │
-│  cloud secret stores │       │                      │
-│  (via exec backend)  │       │                      │
-└──────────────────────┘       └──────────────────────┘
+Phase 1 ✅
+┌──────────────────────┐
+│  env                 │
+│  local               │
+│  k8s                 │
+│  keeper              │
+│  webhook             │
+│  Prometheus          │
+│  audit logging       │
+│  cloud secret stores │
+│  (via exec backend)  │
+└──────────────────────┘
 
 ## Release Workflow
 

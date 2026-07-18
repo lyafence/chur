@@ -33,7 +33,7 @@ func podWithAnnotations(annos map[string]string) *corev1.Pod {
 func TestMutatePod_NoAnnotations(t *testing.T) {
 	t.Parallel()
 	pod := podWithAnnotations(nil)
-	patch, err := MutatePod(pod, DefaultConfig())
+	patch, _, err := MutatePod(pod, DefaultConfig())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -48,7 +48,7 @@ func TestMutatePod_InvalidSecretRef(t *testing.T) {
 		annotationProvider: "env",
 		annotationSecret:   "foo/bar",
 	})
-	_, err := MutatePod(pod, DefaultConfig())
+	_, _, err := MutatePod(pod, DefaultConfig())
 	if err == nil {
 		t.Fatal("expected error for invalid secret-ref")
 	}
@@ -64,7 +64,7 @@ func TestMutatePod_InvalidSecretKey(t *testing.T) {
 		annotationSecret:    "my-secret",
 		annotationSecretKey: "bad/key",
 	})
-	_, err := MutatePod(pod, DefaultConfig())
+	_, _, err := MutatePod(pod, DefaultConfig())
 	if err == nil {
 		t.Fatal("expected error for invalid secret-key")
 	}
@@ -79,7 +79,7 @@ func TestMutatePod_UnknownProvider(t *testing.T) {
 		annotationProvider: "vault",
 		annotationSecret:   "my-secret",
 	})
-	_, err := MutatePod(pod, DefaultConfig())
+	_, _, err := MutatePod(pod, DefaultConfig())
 	if err == nil {
 		t.Fatal("expected error for unknown provider")
 	}
@@ -95,7 +95,7 @@ func TestMutatePod_InvalidMountPath(t *testing.T) {
 		annotationSecret:   "my-secret",
 		annotationMount:    "../../etc",
 	})
-	_, err := MutatePod(pod, DefaultConfig())
+	_, _, err := MutatePod(pod, DefaultConfig())
 	if err == nil {
 		t.Fatal("expected error for invalid mount-path")
 	}
@@ -108,7 +108,7 @@ func TestMutatePod_CreatesArrays(t *testing.T) {
 		annotationSecret:   "my-secret",
 	})
 
-	patch, err := MutatePod(pod, DefaultConfig())
+	patch, _, err := MutatePod(pod, DefaultConfig())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -207,7 +207,7 @@ func TestMutatePod_AppendsToExistingArrays(t *testing.T) {
 	pod.Spec.InitContainers = []corev1.Container{{Name: "existing-init", Image: "init"}}
 	pod.Spec.Containers[0].VolumeMounts = []corev1.VolumeMount{{Name: "existing-mount"}}
 
-	patch, err := MutatePod(pod, DefaultConfig())
+	patch, _, err := MutatePod(pod, DefaultConfig())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -229,7 +229,7 @@ func TestMutatePod_AddsFSGroup(t *testing.T) {
 		annotationProvider: "env",
 		annotationSecret:   "my-secret",
 	})
-	patch, err := MutatePod(pod, DefaultConfig())
+	patch, _, err := MutatePod(pod, DefaultConfig())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -254,7 +254,7 @@ func TestMutatePod_RespectsExistingFSGroup(t *testing.T) {
 	pod.Spec.SecurityContext = &corev1.PodSecurityContext{
 		FSGroup: ptr.To[int64](2000),
 	}
-	patch, err := MutatePod(pod, DefaultConfig())
+	patch, _, err := MutatePod(pod, DefaultConfig())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -274,7 +274,7 @@ func TestMutatePod_PassesSecretKey(t *testing.T) {
 	})
 
 	cfg := DefaultConfig()
-	patch, err := MutatePod(pod, cfg)
+	patch, _, err := MutatePod(pod, cfg)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -317,7 +317,7 @@ func TestMutatePod_PassesInitConfig(t *testing.T) {
 	cfg.MaxSecretSize = "2Mi"
 	cfg.LocalBasePath = "/custom/secrets"
 
-	patch, err := MutatePod(pod, cfg)
+	patch, _, err := MutatePod(pod, cfg)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -359,7 +359,7 @@ func TestMutatePod_SecurityContext(t *testing.T) {
 		annotationSecret:   "my-secret",
 	})
 
-	patch, err := MutatePod(pod, DefaultConfig())
+	patch, _, err := MutatePod(pod, DefaultConfig())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -404,7 +404,7 @@ func TestMutatePod_SizeLimitInEmptyDir(t *testing.T) {
 		annotationSecret:   "my-secret",
 	})
 
-	patch, err := MutatePod(pod, DefaultConfig())
+	patch, _, err := MutatePod(pod, DefaultConfig())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -443,7 +443,7 @@ func TestMutatePod_CustomSizeLimit(t *testing.T) {
 	hundredMi := resource.MustParse("100Mi")
 	cfg.VolumeSizeLimit = hundredMi
 
-	patch, err := MutatePod(pod, cfg)
+	patch, _, err := MutatePod(pod, cfg)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -475,7 +475,7 @@ func TestMutatePod_SizeLimitInAppendPath(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.VolumeSizeLimit = resource.MustParse("10Mi")
 
-	patch, err := MutatePod(pod, cfg)
+	patch, _, err := MutatePod(pod, cfg)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -528,7 +528,7 @@ func TestMutatePod_AllowedNamespaces(t *testing.T) {
 			cfg := DefaultConfig()
 			cfg.AllowedNamespaces = tt.allowed
 
-			patch, err := MutatePod(pod, cfg)
+			patch, _, err := MutatePod(pod, cfg)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -561,6 +561,7 @@ func TestMutatePodKeeperEnvInjection(t *testing.T) {
 		KeeperServiceName:      "chur-keeper",
 		KeeperServiceNamespace: "chur-system",
 		KeeperServicePort:      "9443",
+		KeeperServerCA:         "/etc/chur-keeper/ca.crt",
 	}
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
@@ -570,12 +571,11 @@ func TestMutatePodKeeperEnvInjection(t *testing.T) {
 				annotationProvider:         "keeper",
 				annotationSecret:           "prod/db/password",
 				annotationKeeperSkipVerify: "true",
-				annotationProviderEnv:      `{"CHUR_KEEPER_SERVER_CA":"/etc/chur-keeper/ca.crt"}`,
 			},
 		},
 	}
 
-	patches, err := MutatePod(pod, cfg)
+	patches, _, err := MutatePod(pod, cfg)
 	if err != nil {
 		t.Fatalf("mutate: %v", err)
 	}
@@ -630,7 +630,7 @@ func TestMutatePodProviderEnvInvalidKey(t *testing.T) {
 			},
 		},
 	}
-	if _, err := MutatePod(pod, cfg); err == nil {
+	if _, _, err := MutatePod(pod, cfg); err == nil {
 		t.Error("expected error for invalid provider-env key")
 	}
 }
@@ -645,7 +645,7 @@ func TestMutatePod_CustomInitImage(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.InitImage = "my-registry/chur-init:v1.0.0"
 
-	patch, err := MutatePod(pod, cfg)
+	patch, _, err := MutatePod(pod, cfg)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -677,7 +677,7 @@ func TestMutatePod_LocalProvider(t *testing.T) {
 		annotationProvider: "local",
 		annotationSecret:   "my-secret",
 	})
-	patch, err := MutatePod(pod, cfg)
+	patch, _, err := MutatePod(pod, cfg)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -748,7 +748,7 @@ func TestMutatePod_KeeperSkipVerifyValues(t *testing.T) {
 					Containers: []corev1.Container{{Name: "app", Image: "app"}},
 				},
 			}
-			patches, err := MutatePod(pod, cfg)
+			patches, _, err := MutatePod(pod, cfg)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -808,6 +808,92 @@ func TestValidProviderEnvKey(t *testing.T) {
 	}
 }
 
+func TestMutatePod_KeeperClientCertMount(t *testing.T) {
+	t.Parallel()
+	cfg := &Config{
+		VolumeSizeLimit:            resource.MustParse("10Mi"),
+		InitImage:                  "chur-init:latest",
+		MaxSecretSize:              "1Mi",
+		LocalBasePath:              "/etc/chur/secrets",
+		KeeperServiceName:          "chur-keeper",
+		KeeperServiceNamespace:     "chur-system",
+		KeeperServicePort:          "9443",
+		KeeperTLSCertPath:          "/etc/chur-keeper/client-tls/tls.crt",
+		KeeperClientCertSecretName: "keeper-client-tls",
+	}
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test",
+			Namespace: "default",
+			Annotations: map[string]string{
+				annotationProvider: "keeper",
+				annotationSecret:   "prod/db/password",
+			},
+		},
+		Spec: corev1.PodSpec{
+			Containers: []corev1.Container{{Name: "app", Image: "app"}},
+		},
+	}
+
+	patches, _, err := MutatePod(pod, cfg)
+	if err != nil {
+		t.Fatalf("mutate: %v", err)
+	}
+
+	var foundVolume bool
+	var foundMount bool
+	for _, p := range patches {
+		// Check volume creation.
+		if p.Path == "/spec/volumes" {
+			if arr, ok := p.Value.([]corev1.Volume); ok {
+				for _, vol := range arr {
+					if vol.Name == "chur-keeper-client-tls" &&
+						vol.Secret != nil &&
+						vol.Secret.SecretName == "keeper-client-tls" &&
+						*vol.Secret.DefaultMode == 0444 {
+						foundVolume = true
+					}
+				}
+			}
+		}
+		if p.Path == "/spec/volumes/-" {
+			if vol, ok := p.Value.(corev1.Volume); ok {
+				if vol.Name == "chur-keeper-client-tls" &&
+					vol.Secret != nil &&
+					vol.Secret.SecretName == "keeper-client-tls" &&
+					*vol.Secret.DefaultMode == 0444 {
+					foundVolume = true
+				}
+			}
+		}
+		// Check init container volume mount.
+		if p.Path == "/spec/initContainers" || p.Path == "/spec/initContainers/-" {
+			switch v := p.Value.(type) {
+			case corev1.Container:
+				for _, vm := range v.VolumeMounts {
+					if vm.Name == "chur-keeper-client-tls" && vm.ReadOnly {
+						foundMount = true
+					}
+				}
+			case []corev1.Container:
+				for _, c := range v {
+					for _, vm := range c.VolumeMounts {
+						if vm.Name == "chur-keeper-client-tls" && vm.ReadOnly {
+							foundMount = true
+						}
+					}
+				}
+			}
+		}
+	}
+	if !foundVolume {
+		t.Error("expected chur-keeper-client-tls volume with secret keeper-client-tls")
+	}
+	if !foundMount {
+		t.Error("expected chur-keeper-client-tls volume mount in init container")
+	}
+}
+
 func TestParseProviderEnvReservedEnv(t *testing.T) {
 	t.Parallel()
 	cfg := &Config{
@@ -827,6 +913,9 @@ func TestParseProviderEnvReservedEnv(t *testing.T) {
 		"CHUR_MAX_SECRET_SIZE",
 		"CHUR_LOCAL_BASE_PATH",
 		"CHUR_KEEPER_URL",
+		"CHUR_KEEPER_TLS_CERT_PATH",
+		"CHUR_KEEPER_TLS_KEY_PATH",
+		"CHUR_KEEPER_SERVER_CA",
 	} {
 		t.Run(reserved, func(t *testing.T) {
 			anno := `{"` + reserved + `":"value"}`
@@ -841,7 +930,7 @@ func TestParseProviderEnvReservedEnv(t *testing.T) {
 					},
 				},
 			}
-			if _, err := MutatePod(pod, cfg); err == nil {
+			if _, _, err := MutatePod(pod, cfg); err == nil {
 				t.Errorf("expected error for reserved key %q", reserved)
 			}
 		})
@@ -854,6 +943,87 @@ func TestValidProvidersMatchRegistry(t *testing.T) {
 	for _, name := range registered {
 		if !validProviders[name] {
 			t.Errorf("registry has %q but validProviders does not", name)
+		}
+	}
+}
+
+func BenchmarkMutatePod_EmptyPod(b *testing.B) {
+	pod := podWithAnnotations(nil)
+	cfg := DefaultConfig()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _, err := MutatePod(pod, cfg)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkMutatePod_AnnotatedPod(b *testing.B) {
+	pod := podWithAnnotations(map[string]string{
+		annotationProvider: "env",
+		annotationSecret:   "my-secret",
+	})
+	cfg := DefaultConfig()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _, err := MutatePod(pod, cfg)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkMutatePod_ExistingVolumes(b *testing.B) {
+	pod := podWithAnnotations(map[string]string{
+		annotationProvider: "env",
+		annotationSecret:   "my-secret",
+	})
+	pod.Spec.Volumes = []corev1.Volume{{Name: "existing"}}
+	pod.Spec.InitContainers = []corev1.Container{{Name: "existing-init", Image: "init"}}
+	pod.Spec.Containers[0].VolumeMounts = []corev1.VolumeMount{{Name: "existing-mount"}}
+	cfg := DefaultConfig()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _, err := MutatePod(pod, cfg)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkMutatePod_KeeperWithClientCert(b *testing.B) {
+	cfg := &Config{
+		VolumeSizeLimit:            resource.MustParse("10Mi"),
+		InitImage:                  "chur-init:latest",
+		MaxSecretSize:              "1Mi",
+		LocalBasePath:              "/etc/chur/secrets",
+		KeeperServiceName:          "chur-keeper",
+		KeeperServiceNamespace:     "chur-system",
+		KeeperServicePort:          "9443",
+		KeeperTLSCertPath:          "/etc/chur-keeper/client-tls/tls.crt",
+		KeeperTLSKeyPath:           "/etc/chur-keeper/client-tls/tls.key",
+		KeeperServerCA:             "/etc/chur-keeper/ca.crt",
+		KeeperClientCertSecretName: "keeper-client-tls",
+	}
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test",
+			Namespace: "default",
+			Annotations: map[string]string{
+				annotationProvider: "keeper",
+				annotationSecret:   "prod/db/password",
+			},
+		},
+		Spec: corev1.PodSpec{
+			Containers: []corev1.Container{{Name: "app", Image: "app"}},
+		},
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _, err := MutatePod(pod, cfg)
+		if err != nil {
+			b.Fatal(err)
 		}
 	}
 }

@@ -108,6 +108,10 @@ func main() {
 	cfg.KeeperServiceName = os.Getenv("CHUR_KEEPER_SERVICE_NAME")
 	cfg.KeeperServiceNamespace = firstNonEmpty(os.Getenv("CHUR_KEEPER_SERVICE_NAMESPACE"), "chur-system")
 	cfg.KeeperServicePort = firstNonEmpty(os.Getenv("CHUR_KEEPER_SERVICE_PORT"), "9443")
+	cfg.KeeperTLSCertPath = os.Getenv("CHUR_KEEPER_TLS_CERT_PATH")
+	cfg.KeeperTLSKeyPath = os.Getenv("CHUR_KEEPER_TLS_KEY_PATH")
+	cfg.KeeperServerCA = os.Getenv("CHUR_KEEPER_SERVER_CA")
+	cfg.KeeperClientCertSecretName = os.Getenv("CHUR_KEEPER_CLIENT_CERT_SECRET_NAME")
 
 	maxSize, err := resource.ParseQuantity(cfg.MaxSecretSize)
 	if err == nil && cfg.VolumeSizeLimit.Value() < maxSize.Value() {
