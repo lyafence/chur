@@ -179,7 +179,7 @@ func handleGetSecret(b Backend, maxSize int64, sem chan struct{}, backendName st
 			)
 			metrics.KeeperRequestsTotal.WithLabelValues(backendName, "error").Inc()
 			metrics.KeeperRequestDurationSeconds.WithLabelValues(backendName).Observe(time.Since(start).Seconds())
-			writeError(w, err.Error(), http.StatusInternalServerError)
+			writeError(w, "internal server error", http.StatusInternalServerError)
 			return
 		}
 

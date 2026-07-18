@@ -12,12 +12,9 @@ spec:
   policyTypes: [Ingress]
   ingress:
     - from:
-        # Allow from the API server. The kube-apiserver does not have predictable
-        # pod labels; restrict by source CIDR or namespace-selector to match your
-        # cluster setup. Uncomment and adjust for your environment:
-        # - namespaceSelector:
-        #     matchLabels:
-        #       kubernetes.io/metadata.name: kube-system
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
       ports:
         - port: {{ .Values.webhook.listen | toString | splitList ":" | last | atoi | default 8443 }}
 ---
@@ -37,7 +34,11 @@ spec:
         # Allow from pods using chur-init with the keeper provider. chur-init
         # runs in application namespaces — restrict to the namespaces that
         # contain pods with chur.io/provider: keeper annotations.
-        # Uncomment and adjust for your environment:
+        # Uncomment and adjust for your environment. Example:
+        # - namespaceSelector:
+        #     matchLabels:
+        #       kubernetes.io/metadata.name: my-app
+        # For all-namespace access (less restrictive):
         # - namespaceSelector: {}
       ports:
         - port: {{ .Values.keeper.listen | toString | splitList ":" | last | atoi | default 9443 }}

@@ -203,5 +203,5 @@ Before preparing a release:
   - `make vuln`
   - `make e2e`
 
-Push a version tag (e.g. `v0.3.0`) to trigger the GitHub Actions release workflow.
+Push a version tag (e.g. `v<major>.<minor>.<patch>`) to trigger the GitHub Actions release workflow.
 ```

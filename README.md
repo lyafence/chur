@@ -82,6 +82,14 @@ no Go SDK dependencies needed.
 See [THREAT_MODEL.md](THREAT_MODEL.md) for the full threat model and
 non-goals.
 
+## Monitoring
+
+Both chur-webhook and chur-keeper expose Prometheus metrics on their health
+ports (`/metrics`). The webhook exposes admission request rates, error ratios,
+and provider injection counters. The keeper exposes request counts and
+durations by backend. Recording rules are available in
+[deploy/prometheus/](deploy/prometheus/recording-rules.yml).
+
 ## Prerequisites
 
 - Kubernetes 1.28+ cluster

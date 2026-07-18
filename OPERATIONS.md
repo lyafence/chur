@@ -9,7 +9,9 @@ See [README.md](README.md) for the architecture diagram and component descriptio
 | Component | Endpoint | Port | Purpose | Verified |
 |-----------|----------|------|---------|----------|
 | chur-webhook | `/healthz`, `/readyz` | 8080 | Liveness and readiness probes | `cmd/webhook/main.go` |
+| chur-webhook | `/metrics` | 8080 | Prometheus metrics | `internal/metrics/handler.go` |
 | chur-keeper | `/healthz` | 9444 | Liveness probe | `internal/keeper/config.go:38` |
+| chur-keeper | `/metrics` | 9444 | Prometheus metrics | `internal/metrics/handler.go` |
 
 Both endpoints return HTTP 200 with `{"status":"ok"}` when healthy.
 

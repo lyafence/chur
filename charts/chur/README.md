@@ -154,6 +154,13 @@ When `keeper.mtls.enabled=true`, the webhook automatically injects
 for basic mTLS. Set `keeper.mtls.clientCert.secretName` to have the
 webhook auto-mount the client certificate secret into the init container.
 
+## Monitoring
+
+The webhook exposes Prometheus metrics at `/metrics` on its health port
+(`:8080` by default). The keeper exposes metrics at `/metrics` on its
+health port (`:9444`). Both use a custom Prometheus registry — no Go runtime
+metrics are mixed in.
+
 ## Values
 
 See `values.yaml` for the full list of configurable parameters.
