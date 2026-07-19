@@ -43,6 +43,7 @@ chur-webhook (Deployment)
         │       └──(keeper)──► chur-keeper (optional, HTTPS)
         │                          │
         │                          ├── filesystem backend
+        │                          ├── http backend
         │                          └── exec backend
         └── app container (reads secret from tmpfs)
 ```
@@ -154,6 +155,11 @@ Trust assumptions:
   executable or script is responsible for validating and sanitizing the
   dynamic `ref` parameter to avoid downstream directory traversal,
   command injection, or application-level exploits.
+- **Note:** For the `http` backend, `chur-keeper` sends `ref` as a URL
+  query parameter (`?ref=<url-encoded-ref>`). `ValidateKeeperRef` is applied
+  before the request, preventing traversal and injection. The upstream server
+  is responsible for authentication (Bearer token from file) and authorization
+  of the requested secret ref.
 
 ### T10: Webhook service account compromise
 
@@ -166,6 +172,22 @@ Trust assumptions:
   the webhook, not the other way around). If future features require API access,
   a separate ServiceAccount should be introduced with minimal RBAC scoped to
   that feature.
+
+### T11: Upstream token memory footprint (HTTP backend)
+
+- **Scenario:** The Bearer token used to authenticate chur-keeper against a
+  remote HTTP API resides in the keeper pod's memory as a Go string (a
+  limitation of `net/http.Header` design). An attacker with root access to
+  the node could extract it from a process memory dump.
+- **Mitigation:** The token is scoped exclusively to the upstream API — it
+  does not grant access to Kubernetes or application secrets. The keeper pod
+  runs in its own Deployment with separate ServiceAccount and namespace
+  isolation from application workloads. The token never leaves the keeper pod
+  and is never exposed to application Pod's environment or filesystem.
+- **Residual risk:** Node-level root access can bypass Pod isolation entirely —
+  this is an accepted residual risk for any secrets management component (see
+  Non-Goals section). The token is read from a Kubernetes Secret via file mount,
+  not stored in environment variables.
 
 ## Residual Risks
 

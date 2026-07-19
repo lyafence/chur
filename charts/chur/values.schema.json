@@ -359,7 +359,7 @@
         },
         "backend": {
           "type": "string",
-          "enum": ["filesystem", "exec"],
+          "enum": ["filesystem", "http", "exec"],
           "description": "Secret storage backend"
         },
         "listen": {
@@ -396,6 +396,19 @@
           "type": "integer",
           "minimum": 0,
           "description": "Maximum stdout bytes for the exec backend"
+        },
+        "httpURL": {
+          "type": "string",
+          "description": "Base URL for the HTTP backend"
+        },
+        "httpTokenFile": {
+          "type": "string",
+          "description": "Path to the Bearer token file for HTTP backend"
+        },
+        "httpTimeout": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "HTTP request timeout in seconds"
         },
         "volume": {
           "type": "object",

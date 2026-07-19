@@ -55,7 +55,17 @@ spec:
             - name: CHUR_KEEPER_EXEC_TIMEOUT
               value: {{ .Values.keeper.execTimeout | default 10 | quote }}
             - name: CHUR_KEEPER_EXEC_MAX_STDOUT
-              value: {{ .Values.keeper.execMaxStdout | default 1048576 | quote }}
+              value: {{ .Values.keeper.execMaxStdout | default 1048576 | int64 | quote }}
+          {{- end }}
+          {{- if eq .Values.keeper.backend "http" }}
+            - name: CHUR_KEEPER_HTTP_URL
+              value: {{ .Values.keeper.httpURL | quote }}
+            {{- if .Values.keeper.httpTokenFile }}
+            - name: CHUR_KEEPER_HTTP_TOKEN_FILE
+              value: {{ .Values.keeper.httpTokenFile | quote }}
+            {{- end }}
+            - name: CHUR_KEEPER_HTTP_TIMEOUT
+              value: {{ .Values.keeper.httpTimeout | default 30 | int64 | quote }}
           {{- end }}
           {{- if eq .Values.keeper.tlsMode "mtls" }}
             - name: CHUR_KEEPER_TLS_CERT_PATH
@@ -77,9 +87,11 @@ spec:
             {{- toYaml . | nindent 12 }}
           {{- end }}
           volumeMounts:
+          {{- if eq .Values.keeper.backend "filesystem" }}
             - name: secrets
               mountPath: /var/lib/chur-keeper/secrets
               readOnly: true
+          {{- end }}
           {{- if eq .Values.keeper.tlsMode "mtls" }}
             - name: tls
               mountPath: /etc/chur-keeper/tls
@@ -129,8 +141,10 @@ spec:
           resources:
             {{- toYaml .Values.keeper.resources | nindent 12 }}
       volumes:
+      {{- if eq .Values.keeper.backend "filesystem" }}
         - name: secrets
           {{- toYaml .Values.keeper.volume | nindent 10 }}
+      {{- end }}
       {{- if eq .Values.keeper.tlsMode "mtls" }}
         - name: tls
           secret:

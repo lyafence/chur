@@ -598,8 +598,8 @@ func TestMutatePodKeeperEnvInjection(t *testing.T) {
 			if got, want := env["CHUR_KEEPER_URL"], "https://chur-keeper.chur-system.svc:9443"; got != want {
 				t.Errorf("CHUR_KEEPER_URL = %q, want %q", got, want)
 			}
-			if got, want := env["CHUR_KEEPER_SKIP_VERIFY"], "1"; got != want {
-				t.Errorf("CHUR_KEEPER_SKIP_VERIFY = %q, want %q", got, want)
+			if got, want := env["CHUR_KEEPER_INSECURE_SKIP_VERIFY"], "1"; got != want {
+				t.Errorf("CHUR_KEEPER_INSECURE_SKIP_VERIFY = %q, want %q", got, want)
 			}
 			if got, want := env["CHUR_KEEPER_SERVER_CA"], "/etc/chur-keeper/ca.crt"; got != want {
 				t.Errorf("CHUR_KEEPER_SERVER_CA = %q, want %q", got, want)
@@ -758,14 +758,14 @@ func TestMutatePod_KeeperSkipVerifyValues(t *testing.T) {
 					switch v := p.Value.(type) {
 					case corev1.Container:
 						for _, e := range v.Env {
-							if e.Name == "CHUR_KEEPER_SKIP_VERIFY" {
+							if e.Name == "CHUR_KEEPER_INSECURE_SKIP_VERIFY" {
 								found = true
 							}
 						}
 					case []corev1.Container:
 						for _, c := range v {
 							for _, e := range c.Env {
-								if e.Name == "CHUR_KEEPER_SKIP_VERIFY" {
+								if e.Name == "CHUR_KEEPER_INSECURE_SKIP_VERIFY" {
 									found = true
 								}
 							}
@@ -774,10 +774,10 @@ func TestMutatePod_KeeperSkipVerifyValues(t *testing.T) {
 				}
 			}
 			if tt.wantEnv && !found {
-				t.Error("expected CHUR_KEEPER_SKIP_VERIFY env var")
+				t.Error("expected CHUR_KEEPER_INSECURE_SKIP_VERIFY env var")
 			}
 			if !tt.wantEnv && found {
-				t.Error("unexpected CHUR_KEEPER_SKIP_VERIFY env var")
+				t.Error("unexpected CHUR_KEEPER_INSECURE_SKIP_VERIFY env var")
 			}
 		})
 	}

@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
+	"net/url"
 	"sort"
 	"strings"
 
@@ -143,6 +145,9 @@ func parseProviderEnv(annotation string) ([]corev1.EnvVar, error) {
 		}
 		if reservedInitEnv[k] {
 			return nil, fmt.Errorf("%w: reserved key %q in %s", ErrValidation, k, annotationProviderEnv)
+		}
+		if len(v) > 4096 {
+			return nil, fmt.Errorf("%w: value for %q exceeds 4096 bytes in %s", ErrValidation, k, annotationProviderEnv)
 		}
 		envs = append(envs, corev1.EnvVar{Name: k, Value: v})
 	}
@@ -290,8 +295,12 @@ func MutatePod(pod *corev1.Pod, cfg *Config) ([]PatchOperation, *AuditInfo, erro
 
 	if providerName == providerKeeper {
 		if cfg.KeeperServiceName != "" {
-			url := fmt.Sprintf("https://%s.%s.svc:%s", cfg.KeeperServiceName, cfg.KeeperServiceNamespace, cfg.KeeperServicePort)
-			initEnv = append(initEnv, corev1.EnvVar{Name: "CHUR_KEEPER_URL", Value: url})
+			host := cfg.KeeperServiceName + "." + cfg.KeeperServiceNamespace + ".svc"
+			u := url.URL{
+				Scheme: "https",
+				Host:   net.JoinHostPort(host, cfg.KeeperServicePort),
+			}
+			initEnv = append(initEnv, corev1.EnvVar{Name: "CHUR_KEEPER_URL", Value: u.String()})
 		}
 		if cfg.KeeperTLSCertPath != "" {
 			initEnv = append(initEnv, corev1.EnvVar{Name: "CHUR_KEEPER_TLS_CERT_PATH", Value: cfg.KeeperTLSCertPath})
@@ -303,7 +312,7 @@ func MutatePod(pod *corev1.Pod, cfg *Config) ([]PatchOperation, *AuditInfo, erro
 			initEnv = append(initEnv, corev1.EnvVar{Name: "CHUR_KEEPER_SERVER_CA", Value: cfg.KeeperServerCA})
 		}
 		if pod.Annotations[annotationKeeperSkipVerify] == "1" || pod.Annotations[annotationKeeperSkipVerify] == "true" {
-			initEnv = append(initEnv, corev1.EnvVar{Name: "CHUR_KEEPER_SKIP_VERIFY", Value: "1"})
+			initEnv = append(initEnv, corev1.EnvVar{Name: "CHUR_KEEPER_INSECURE_SKIP_VERIFY", Value: "1"})
 		}
 		extraEnv, err := parseProviderEnv(pod.Annotations[annotationProviderEnv])
 		if err != nil {

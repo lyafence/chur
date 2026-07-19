@@ -63,6 +63,8 @@ Both endpoints return HTTP 200 with `{"status":"ok"}` when healthy.
 2. Verify mTLS configuration if enabled.
 
 3. Verify the exec command or filesystem path is correct.
+
+4. For the HTTP backend, verify the upstream URL, token, and server are reachable.
 ```
 
 ## Troubleshooting Matrix
@@ -75,3 +77,4 @@ Both endpoints return HTTP 200 with `{"status":"ok"}` when healthy.
 | Init timeout (>=30s) | Keeper unavailable, exec backend slow, network issue | Keeper logs, network connectivity, exec script |
 | Admission error: "unknown provider" | Typo in `chur.io/provider` annotation | Annotation value, valid providers list |
 | Secret file empty | Wrong `chur.io/secret-key` for k8s provider | K8s Secret data keys, annotation value |
+| HTTP backend 4xx/5xx | Upstream server error or auth failure | Keeper logs, upstream server logs, token validity |

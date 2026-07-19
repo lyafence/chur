@@ -5,7 +5,7 @@
 > Feedback and production-like testing are welcome.
 
 ![Status](https://img.shields.io/badge/status-beta-yellow)
-![Go](https://img.shields.io/badge/go-1.26.4-blue)
+![Go](https://img.shields.io/badge/go-1.26.5-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Release](https://img.shields.io/github/v/release/lyafence/chur)
 
@@ -45,26 +45,27 @@ no Go SDK dependencies needed.
 
 ```
                          ┌──────────────┐
-                         │  API Server   │
+                         │  API Server  │
                          └──────┬───────┘
                                 │ admission review
                          ┌──────▼───────┐
                          │ chur-webhook │  ← MutatingWebhookConfiguration
                          └──────┬───────┘
                                 │ JSON patch: add tmpfs volume + init container
-                          ┌──────▼───────┐
-                          │    Pod        │
-                          │ ┌──────────┐ │
-                          │ │chur-init │ │  ← reads secret from provider, writes to tmpfs
-                          │ │    │      │ │
-                          │ │    └──(keeper)──► chur-keeper (optional)
-                          │ │                  ├── filesystem backend
-                          │ │                  └── exec backend
-                          │ └──────────┘ │
-                          │ ┌──────────┐ │
-                          │ │  app     │ │  ← reads secret from tmpfs file
-                          │ └──────────┘ │
-                          └──────────────┘
+                         ┌──────▼───────┐
+                         │     Pod      │
+                         │ ┌──────────┐ │
+                         │ │chur-init │ │  ← reads secret from provider, writes to tmpfs
+                         │ │    │     │ │
+                         │ │    └──(keeper)──► chur-keeper (optional)
+                         │ │                  ├── filesystem backend
+                         │ │                  ├── http backend (GET → upstream HTTPS API)
+                         │ │                  └── exec backend
+                         │ └──────────┘ │
+                         │ ┌──────────┐ │
+                         │ │   app    │ │  ← reads secret from tmpfs file
+                         │ └──────────┘ │
+                         └──────────────┘
 ```
 
 ## Security
@@ -204,6 +205,7 @@ Backends are selected via `CHUR_KEEPER_BACKEND`:
 | Backend | Variable | Description |
 |---------|----------|-------------|
 | `filesystem` | `CHUR_KEEPER_BACKEND=filesystem` | Reads secrets from files under `CHUR_KEEPER_BACKEND_FS_ROOT` |
+| `http` | `CHUR_KEEPER_BACKEND=http` | `GET {CHUR_KEEPER_HTTP_URL}?ref=<ref>` with Bearer token. Returns raw body — no JSON parsing. For JSON APIs, use `exec`. |
 | `exec` | `CHUR_KEEPER_BACKEND=exec` | Executes `CHUR_KEEPER_EXEC_COMMAND ref` |
 
 To use it, annotate a Pod with `chur.io/provider: keeper` and set
@@ -215,7 +217,7 @@ be supplied through annotations:
 
 | Annotation | Effect |
 |---|---|
-| `chur.io/keeper-skip-verify: "1"` or `"true"` | Injects `CHUR_KEEPER_SKIP_VERIFY=1` (dev only) |
+| `chur.io/keeper-skip-verify: "1"` or `"true"` | Injects `CHUR_KEEPER_INSECURE_SKIP_VERIFY=1` (dev only) |
 | `chur.io/provider-env: '{"CHUR_KEEPER_SERVER_CA":"/etc/chur-keeper/ca.crt"}'` | Injects arbitrary `CHUR_*` env vars into `chur-init` |
 
 For production mTLS, deploy keeper with `keeper.mtls.enabled=true`. The webhook
@@ -252,10 +254,13 @@ init container configuration), see [`.env.example`](.env.example).
 | `CHUR_KEEPER_LISTEN` | `:9443` | keeper | HTTPS listen address |
 | `CHUR_KEEPER_HEALTH_LISTEN` | `:9444` | keeper | Health endpoint listen address |
 | `CHUR_KEEPER_TLS_MODE` | `self-signed` | keeper | TLS mode: `self-signed` or `mtls` |
-| `CHUR_KEEPER_BACKEND` | `filesystem` | keeper | Backend type: `filesystem` or `exec` |
+| `CHUR_KEEPER_BACKEND` | `filesystem` | keeper | Backend type: `filesystem`, `http`, or `exec` |
 | `CHUR_KEEPER_MAX_SECRET_SIZE` | `1Mi` | keeper | Maximum response size |
 | `CHUR_KEEPER_EXEC_COMMAND` | — | keeper | Command to execute (exec backend) |
 | `CHUR_KEEPER_BACKEND_FS_ROOT` | `/var/lib/chur-keeper/secrets` | keeper | Root directory (filesystem backend) |
+| `CHUR_KEEPER_HTTP_URL` | — | keeper | Base URL for HTTP backend |
+| `CHUR_KEEPER_HTTP_TOKEN_FILE` | — | keeper | Path to Bearer token file (optional) |
+| `CHUR_KEEPER_HTTP_TIMEOUT` | `30` | keeper | HTTP request timeout in seconds |
 | `CHUR_KEEPER_TLS_CERT_PATH` | — | webhook | Client TLS cert path for chur-init (keeper mTLS, auto-injected) |
 | `CHUR_KEEPER_TLS_KEY_PATH` | — | webhook | Client TLS key path for chur-init (keeper mTLS, auto-injected) |
 | `CHUR_KEEPER_SERVER_CA` | — | webhook | Server CA path for verifying keeper (keeper mTLS, auto-injected) |

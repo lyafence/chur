@@ -16,6 +16,7 @@ import (
 
 	"github.com/lyafence/chur/internal/metrics"
 	churtls "github.com/lyafence/chur/internal/tls"
+	"github.com/lyafence/chur/internal/validate"
 )
 
 type getRequest struct {
@@ -60,6 +61,8 @@ func Serve(ctx context.Context, cfg *Config, tlsCfg *tls.Config, listener net.Li
 			ReadHeaderTimeout: 5 * time.Second,
 			ReadTimeout:       5 * time.Second,
 			WriteTimeout:      5 * time.Second,
+			IdleTimeout:       30 * time.Second,
+			MaxHeaderBytes:    1 << 20,
 		}
 		go func() {
 			slog.InfoContext(ctx, "keeper health server starting", "addr", cfg.HealthListen)
@@ -163,6 +166,12 @@ func handleGetSecret(b Backend, maxSize int64, sem chan struct{}, backendName st
 			metrics.KeeperRequestsTotal.WithLabelValues(backendName, "error").Inc()
 			metrics.KeeperRequestDurationSeconds.WithLabelValues(backendName).Observe(time.Since(start).Seconds())
 			writeError(w, "ref is required", http.StatusBadRequest)
+			return
+		}
+		if err := validate.ValidateKeeperRef(req.Ref); err != nil {
+			metrics.KeeperRequestsTotal.WithLabelValues(backendName, "error").Inc()
+			metrics.KeeperRequestDurationSeconds.WithLabelValues(backendName).Observe(time.Since(start).Seconds())
+			writeError(w, "invalid ref", http.StatusBadRequest)
 			return
 		}
 

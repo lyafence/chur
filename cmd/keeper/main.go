@@ -11,6 +11,7 @@ import (
 	"github.com/lyafence/chur/internal/keeper"
 	"github.com/lyafence/chur/internal/keeper/exec"
 	"github.com/lyafence/chur/internal/keeper/filesystem"
+	httpbackend "github.com/lyafence/chur/internal/keeper/http"
 )
 
 var version = "dev"
@@ -45,12 +46,28 @@ func main() {
 			slog.ErrorContext(ctx, "CHUR_KEEPER_EXEC_COMMAND is required for exec backend")
 			os.Exit(1)
 		}
+		if _, err := os.Stat(cmd); err != nil {
+			slog.ErrorContext(ctx, "exec backend: command not found", "command", cmd, "error", err)
+			os.Exit(1)
+		}
 		execBackend, err := exec.New(cmd, cfg.ExecTimeout, cfg.ExecMaxStdout)
 		if err != nil {
 			slog.ErrorContext(ctx, "exec backend: invalid config", "error", err)
 			os.Exit(1)
 		}
 		cfg.Backend = execBackend
+
+	case "http":
+		if cfg.HTTPURL == "" {
+			slog.ErrorContext(ctx, "CHUR_KEEPER_HTTP_URL is required for http backend")
+			os.Exit(1)
+		}
+		hb, err := httpbackend.New(cfg.HTTPURL, cfg.HTTPTokenFile, cfg.HTTPTimeout, cfg.MaxSecretSize)
+		if err != nil {
+			slog.ErrorContext(ctx, "http backend: invalid config", "error", err)
+			os.Exit(1)
+		}
+		cfg.Backend = hb
 
 	default:
 		slog.ErrorContext(ctx, "unknown backend type", "backend", cfg.BackendType)

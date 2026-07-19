@@ -77,13 +77,16 @@ The `keeper` section controls the optional `chur-keeper` deployment:
 | `keeper.listen` | `:9443` | Keeper HTTPS listen address |
 | `keeper.healthListen` | `:9444` | Keeper health probe listen address |
 | `keeper.tlsMode` | `self-signed` | TLS mode: `self-signed` or `mtls` |
-| `keeper.backend` | `filesystem` | Secret storage backend: `filesystem` or `exec` |
+| `keeper.backend` | `filesystem` | Secret storage backend: `filesystem`, `http`, or `exec` |
 | `keeper.maxSecretSize` | `"1Mi"` | Maximum secret response size |
 | `keeper.maxConcurrent` | `100` | Maximum concurrent HTTP requests |
 | `keeper.fsRoot` | `/var/lib/chur-keeper/secrets` | Root directory (filesystem backend) |
 | `keeper.execCommand` | `""` | Exec command (required when backend=exec) |
 | `keeper.execTimeout` | `10` | Exec command timeout in seconds |
 | `keeper.execMaxStdout` | `1048576` | Max stdout bytes for exec backend |
+| `keeper.httpURL` | `""` | Base URL for HTTP backend (required when backend=http) |
+| `keeper.httpTokenFile` | `""` | Path to Bearer token file (optional) |
+| `keeper.httpTimeout` | `30` | HTTP request timeout in seconds |
 | `keeper.volume.hostPath.path` | `/var/lib/chur-keeper/secrets` | Host path for filesystem backend |
 | `keeper.volume.hostPath.type` | `DirectoryOrCreate` | Host path type |
 | `keeper.tls.existingSecret` | `""` | Existing TLS Secret name (required for `mtls`) |
@@ -142,11 +145,36 @@ into chur-init containers of pods using the keeper provider
 (`chur.io/provider: keeper`). Use `chur.io/provider: keeper` in your Pod
 annotations to route secret fetching through the keeper.
 
+### HTTP backend with Bearer token
+
+When using `backend: http`, the Bearer token is read from a file specified by
+`httpTokenFile`. Mount your token using `extraVolumes` + `extraVolumeMounts`:
+
+```yaml
+keeper:
+  enabled: true
+  backend: http
+  httpURL: "https://secret-svc:8443/v1/get"
+  httpTokenFile: "/etc/chur-keeper/token/token"
+  extraVolumes:
+    - name: token
+      secret:
+        secretName: chur-keeper-token   # Kubernetes Secret containing "token"
+  extraVolumeMounts:
+    - name: token
+      mountPath: /etc/chur-keeper/token
+      readOnly: true
+```
+
+> **Note:** The HTTP backend returns the raw response body. If your API wraps
+> secrets in JSON (e.g., `{"password":"..."}`), use `exec` + `curlimages/curl`
+> with `extraInitContainers` instead. See [extraInitContainers](#extraInitContainers).
+
 Additional keeper annotations:
 
 | Annotation | Effect |
-|---|---|
-| `chur.io/keeper-skip-verify: "1"` or `"true"` | Injects `CHUR_KEEPER_SKIP_VERIFY=1` (dev, skips TLS verification) |
+|---|------|
+| `chur.io/keeper-skip-verify: "1"` or `"true"` | Injects `CHUR_KEEPER_INSECURE_SKIP_VERIFY=1` (dev, skips TLS verification) |
 
 When `keeper.mtls.enabled=true`, the webhook automatically injects
 `CHUR_KEEPER_TLS_CERT_PATH`, `CHUR_KEEPER_TLS_KEY_PATH`, and

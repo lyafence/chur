@@ -31,6 +31,9 @@ type Config struct {
 	ExecCommand   string
 	ExecTimeout   time.Duration
 	ExecMaxStdout int64
+	HTTPURL       string
+	HTTPTokenFile string
+	HTTPTimeout   time.Duration
 }
 
 func DefaultConfig() *Config {
@@ -43,6 +46,7 @@ func DefaultConfig() *Config {
 		MaxConcurrent: 100,
 		ExecTimeout:   10 * time.Second,
 		ExecMaxStdout: 1 << 20,
+		HTTPTimeout:   30 * time.Second,
 	}
 }
 
@@ -109,6 +113,15 @@ func ConfigFromEnv() (*Config, error) {
 			return nil, fmt.Errorf("invalid CHUR_KEEPER_EXEC_MAX_STDOUT %q: must be a positive integer", v)
 		}
 		cfg.ExecMaxStdout = int64(n)
+	}
+	cfg.HTTPURL = os.Getenv("CHUR_KEEPER_HTTP_URL")
+	cfg.HTTPTokenFile = os.Getenv("CHUR_KEEPER_HTTP_TOKEN_FILE")
+	if v := os.Getenv("CHUR_KEEPER_HTTP_TIMEOUT"); v != "" {
+		d, err := strconv.Atoi(v)
+		if err != nil || d <= 0 {
+			return nil, fmt.Errorf("invalid CHUR_KEEPER_HTTP_TIMEOUT %q: must be a positive integer", v)
+		}
+		cfg.HTTPTimeout = time.Duration(d) * time.Second
 	}
 	return cfg, nil
 }

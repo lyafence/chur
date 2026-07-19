@@ -133,7 +133,7 @@ keeper:
     pullPolicy: IfNotPresent
   # keeper.tlsMode controls TLS mode: "self-signed" or "mtls".
   tlsMode: self-signed
-  # keeper.backend is the secret storage backend ("filesystem" or "exec").
+  # keeper.backend is the secret storage backend ("filesystem", "http", or "exec").
   backend: filesystem
   # keeper.listen is the listen address for the keeper HTTPS endpoint.
   listen: ":9443"
@@ -151,6 +151,12 @@ keeper:
   execTimeout: 10
   # keeper.execMaxStdout is the maximum stdout bytes (default 1048576).
   execMaxStdout: 1048576
+  # keeper.httpURL is the base URL for the HTTP backend. Required when backend=http.
+  httpURL: ""
+  # keeper.httpTokenFile is the path to the Bearer token file for HTTP backend (optional).
+  httpTokenFile: ""
+  # keeper.httpTimeout is the HTTP request timeout in seconds (default 30).
+  httpTimeout: 30
   volume:
     # keeper.volume.hostPath is the hostPath volume for secret storage.
     hostPath:
