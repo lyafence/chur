@@ -157,20 +157,17 @@ func handleGetSecret(b Backend, maxSize int64, sem chan struct{}, backendName st
 
 		var req getRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			metrics.KeeperRequestsTotal.WithLabelValues(backendName, "error").Inc()
-			metrics.KeeperRequestDurationSeconds.WithLabelValues(backendName).Observe(time.Since(start).Seconds())
+			recordKeeperMetric(backendName, "error", start)
 			writeError(w, "invalid request body", http.StatusBadRequest)
 			return
 		}
 		if req.Ref == "" {
-			metrics.KeeperRequestsTotal.WithLabelValues(backendName, "error").Inc()
-			metrics.KeeperRequestDurationSeconds.WithLabelValues(backendName).Observe(time.Since(start).Seconds())
+			recordKeeperMetric(backendName, "error", start)
 			writeError(w, "ref is required", http.StatusBadRequest)
 			return
 		}
 		if err := validate.ValidateKeeperRef(req.Ref); err != nil {
-			metrics.KeeperRequestsTotal.WithLabelValues(backendName, "error").Inc()
-			metrics.KeeperRequestDurationSeconds.WithLabelValues(backendName).Observe(time.Since(start).Seconds())
+			recordKeeperMetric(backendName, "error", start)
 			writeError(w, "invalid ref", http.StatusBadRequest)
 			return
 		}
@@ -186,8 +183,7 @@ func handleGetSecret(b Backend, maxSize int64, sem chan struct{}, backendName st
 				"result", "error",
 				"error", err,
 			)
-			metrics.KeeperRequestsTotal.WithLabelValues(backendName, "error").Inc()
-			metrics.KeeperRequestDurationSeconds.WithLabelValues(backendName).Observe(time.Since(start).Seconds())
+			recordKeeperMetric(backendName, "error", start)
 			writeError(w, "internal server error", http.StatusInternalServerError)
 			return
 		}
@@ -200,8 +196,7 @@ func handleGetSecret(b Backend, maxSize int64, sem chan struct{}, backendName st
 				"result", "error",
 				"size", len(data),
 			)
-			metrics.KeeperRequestsTotal.WithLabelValues(backendName, "error").Inc()
-			metrics.KeeperRequestDurationSeconds.WithLabelValues(backendName).Observe(time.Since(start).Seconds())
+			recordKeeperMetric(backendName, "error", start)
 			writeError(w, "secret exceeds max size", http.StatusRequestEntityTooLarge)
 			return
 		}
@@ -213,8 +208,7 @@ func handleGetSecret(b Backend, maxSize int64, sem chan struct{}, backendName st
 			"result", "ok",
 			"size", len(data),
 		)
-		metrics.KeeperRequestsTotal.WithLabelValues(backendName, "ok").Inc()
-		metrics.KeeperRequestDurationSeconds.WithLabelValues(backendName).Observe(time.Since(start).Seconds())
+		recordKeeperMetric(backendName, "ok", start)
 
 		w.Header().Set("Content-Type", "application/octet-stream")
 		w.WriteHeader(http.StatusOK)
@@ -222,6 +216,11 @@ func handleGetSecret(b Backend, maxSize int64, sem chan struct{}, backendName st
 			slog.ErrorContext(r.Context(), "keeper: failed to write response", "error", err)
 		}
 	}
+}
+
+func recordKeeperMetric(backend, status string, start time.Time) {
+	metrics.KeeperRequestsTotal.WithLabelValues(backend, status).Inc()
+	metrics.KeeperRequestDurationSeconds.WithLabelValues(backend).Observe(time.Since(start).Seconds())
 }
 
 func writeError(w http.ResponseWriter, msg string, code int) {

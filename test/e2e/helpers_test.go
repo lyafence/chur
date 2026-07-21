@@ -16,7 +16,23 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/clientcmd"
 )
+
+func newClientset(t *testing.T) *kubernetes.Clientset {
+	t.Helper()
+	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
+	kubeconfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, &clientcmd.ConfigOverrides{})
+	cfg, err := kubeconfig.ClientConfig()
+	if err != nil {
+		t.Fatalf("kubeconfig: %v", err)
+	}
+	cs, err := kubernetes.NewForConfig(cfg)
+	if err != nil {
+		t.Fatalf("clientset: %v", err)
+	}
+	return cs
+}
 
 func createK8sSecret(t *testing.T, cs kubernetes.Interface, ns, name, key, value string) {
 	t.Helper()

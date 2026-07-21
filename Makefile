@@ -40,7 +40,7 @@ lint:
 	golangci-lint run ./...
 
 test:
-	go test -race -count=1 -timeout 120s -tags provider_k8s ./...
+	go test -race -count=1 -timeout 120s -tags provider_k8s -coverprofile=coverage.out ./...
 
 check: lint test build
 
@@ -49,7 +49,7 @@ vuln:
 
 clean:
 	rm -rf bin/ dist/ release/
-	rm -f coverage.out *.log
+	rm -f coverage.out *.log coverage.html
 
 docker-webhook:
 	$(DOCKER) build --platform $(TARGETOS)/$(TARGETARCH) \

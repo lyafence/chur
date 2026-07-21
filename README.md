@@ -8,6 +8,7 @@
 ![Go](https://img.shields.io/badge/go-1.26.5-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Release](https://img.shields.io/github/v/release/lyafence/chur)
+[![Coverage Status](https://coveralls.io/repos/github/lyafence/chur/badge.svg?branch=main)](https://coveralls.io/github/lyafence/chur)
 
 **In-memory secret delivery for Kubernetes.**  
 
@@ -297,6 +298,12 @@ subjects:
 
 For production, consider restricting access to specific secrets via
 `resourceNames` in the Role.
+
+## Development
+
+This project was developed with AI assistance. All code is reviewed, tested,
+and maintained by the author. Contributions are welcome regardless of how
+they are produced — AI-assisted or hand-written.
 
 ## License
 

@@ -10,8 +10,6 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/tools/clientcmd"
 )
 
 func TestE2E(t *testing.T) {
@@ -28,16 +26,7 @@ func TestE2E(t *testing.T) {
 	secretKey := "token"
 	testValue := "e2e-test-secret-value-12345"
 
-	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
-	kubeconfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, &clientcmd.ConfigOverrides{})
-	cfg, err := kubeconfig.ClientConfig()
-	if err != nil {
-		t.Fatalf("kubeconfig: %v", err)
-	}
-	clientset, err := kubernetes.NewForConfig(cfg)
-	if err != nil {
-		t.Fatalf("clientset: %v", err)
-	}
+	clientset := newClientset(t)
 
 	createK8sSecret(t, clientset, ns, secretName, secretKey, testValue)
 	defer deleteK8sSecret(t, clientset, ns, secretName)
@@ -72,16 +61,7 @@ func TestE2E_LocalProvider(t *testing.T) {
 	secretRef := "e2e-local-secret"
 	testValue := "e2e-local-secret-value-12345"
 
-	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
-	kubeconfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, &clientcmd.ConfigOverrides{})
-	cfg, err := kubeconfig.ClientConfig()
-	if err != nil {
-		t.Fatalf("kubeconfig: %v", err)
-	}
-	clientset, err := kubernetes.NewForConfig(cfg)
-	if err != nil {
-		t.Fatalf("clientset: %v", err)
-	}
+	clientset := newClientset(t)
 
 	podName := "test-pod-local"
 	createLocalTestPod(t, clientset, ns, podName, secretRef)
@@ -113,16 +93,7 @@ func TestE2E_KeeperProvider(t *testing.T) {
 	secretRef := "prod/db/password"
 	testValue := "e2e-keeper-secret-value"
 
-	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
-	kubeconfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, &clientcmd.ConfigOverrides{})
-	cfg, err := kubeconfig.ClientConfig()
-	if err != nil {
-		t.Fatalf("kubeconfig: %v", err)
-	}
-	clientset, err := kubernetes.NewForConfig(cfg)
-	if err != nil {
-		t.Fatalf("clientset: %v", err)
-	}
+	clientset := newClientset(t)
 
 	podName := "test-pod-keeper"
 	createKeeperTestPod(t, clientset, ns, podName, secretRef)
@@ -151,16 +122,7 @@ func TestE2E_UnknownProvider(t *testing.T) {
 		t.Skip("CHUR_E2E_NAMESPACE not set — use 'make e2e' to run integration tests")
 	}
 
-	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
-	kubeconfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, &clientcmd.ConfigOverrides{})
-	cfg, err := kubeconfig.ClientConfig()
-	if err != nil {
-		t.Fatalf("kubeconfig: %v", err)
-	}
-	clientset, err := kubernetes.NewForConfig(cfg)
-	if err != nil {
-		t.Fatalf("clientset: %v", err)
-	}
+	clientset := newClientset(t)
 
 	podName := "test-pod-unknown"
 	annotations := map[string]string{
@@ -168,7 +130,7 @@ func TestE2E_UnknownProvider(t *testing.T) {
 		"chur.io/secret-ref": "anything",
 	}
 
-	err = createTestPodExpectError(clientset, ns, podName, annotations)
+	err := createTestPodExpectError(clientset, ns, podName, annotations)
 	if err == nil {
 		t.Fatalf("expected admission denial for unknown provider")
 	}
@@ -188,16 +150,7 @@ func TestE2E_KeeperUnavailable(t *testing.T) {
 		t.Skip("CHUR_E2E_NAMESPACE not set — use 'make e2e' to run integration tests")
 	}
 
-	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
-	kubeconfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, &clientcmd.ConfigOverrides{})
-	cfg, err := kubeconfig.ClientConfig()
-	if err != nil {
-		t.Fatalf("kubeconfig: %v", err)
-	}
-	clientset, err := kubernetes.NewForConfig(cfg)
-	if err != nil {
-		t.Fatalf("clientset: %v", err)
-	}
+	clientset := newClientset(t)
 
 	podName := "test-pod-keeper-unavailable"
 	createTestPod(t, clientset, ns, podName, map[string]string{
@@ -222,16 +175,7 @@ func TestE2E_InvalidKeeperRef(t *testing.T) {
 		t.Skip("CHUR_E2E_NAMESPACE not set — use 'make e2e' to run integration tests")
 	}
 
-	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
-	kubeconfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, &clientcmd.ConfigOverrides{})
-	cfg, err := kubeconfig.ClientConfig()
-	if err != nil {
-		t.Fatalf("kubeconfig: %v", err)
-	}
-	clientset, err := kubernetes.NewForConfig(cfg)
-	if err != nil {
-		t.Fatalf("clientset: %v", err)
-	}
+	clientset := newClientset(t)
 
 	podName := "test-pod-invalid-ref"
 	annotations := map[string]string{
@@ -239,7 +183,7 @@ func TestE2E_InvalidKeeperRef(t *testing.T) {
 		"chur.io/secret-ref": "../../../etc/passwd",
 	}
 
-	err = createTestPodExpectError(clientset, ns, podName, annotations)
+	err := createTestPodExpectError(clientset, ns, podName, annotations)
 	if err == nil {
 		t.Fatalf("expected admission denial for invalid keeper ref")
 	}
@@ -259,16 +203,7 @@ func TestE2E_MultipleContainers(t *testing.T) {
 		t.Skip("CHUR_E2E_NAMESPACE not set — use 'make e2e' to run integration tests")
 	}
 
-	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
-	kubeconfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, &clientcmd.ConfigOverrides{})
-	cfg, err := kubeconfig.ClientConfig()
-	if err != nil {
-		t.Fatalf("kubeconfig: %v", err)
-	}
-	clientset, err := kubernetes.NewForConfig(cfg)
-	if err != nil {
-		t.Fatalf("clientset: %v", err)
-	}
+	clientset := newClientset(t)
 
 	secretName := "multi-test"
 	createK8sSecret(t, clientset, ns, secretName, "key", "multi-container-value")
@@ -294,7 +229,7 @@ func TestE2E_MultipleContainers(t *testing.T) {
 			},
 		},
 	}
-	_, err = clientset.CoreV1().Pods(ns).Create(t.Context(), pod, metav1.CreateOptions{})
+	_, err := clientset.CoreV1().Pods(ns).Create(t.Context(), pod, metav1.CreateOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -324,16 +259,7 @@ func TestE2E_SecretTooLarge(t *testing.T) {
 		t.Skip("CHUR_E2E_NAMESPACE not set — use 'make e2e' to run integration tests")
 	}
 
-	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
-	kubeconfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, &clientcmd.ConfigOverrides{})
-	cfg, err := kubeconfig.ClientConfig()
-	if err != nil {
-		t.Fatalf("kubeconfig: %v", err)
-	}
-	clientset, err := kubernetes.NewForConfig(cfg)
-	if err != nil {
-		t.Fatalf("clientset: %v", err)
-	}
+	clientset := newClientset(t)
 
 	secretRef := "e2e-large-secret"
 	podName := "test-pod-large"

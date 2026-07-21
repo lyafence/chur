@@ -192,3 +192,9 @@ metrics are mixed in.
 ## Values
 
 See `values.yaml` for the full list of configurable parameters.
+
+## Project
+
+- [Code of Conduct](https://github.com/lyafence/chur/blob/main/CODE_OF_CONDUCT.md)
+- [License](https://github.com/lyafence/chur/blob/main/LICENSE)
+- [Threat Model](https://github.com/lyafence/chur/blob/main/THREAT_MODEL.md)
