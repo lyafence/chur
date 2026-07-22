@@ -103,16 +103,18 @@ func DefaultConfig() *Config {
 // reservedInitEnv lists keys that the webhook manages itself and that must
 // not be overridden via chur.io/provider-env.
 var reservedInitEnv = map[string]bool{
-	"CHUR_PROVIDER":             true,
-	"CHUR_SECRET_REF":           true,
-	"CHUR_SECRET_KEY":           true,
-	"CHUR_MOUNT_PATH":           true,
-	"CHUR_MAX_SECRET_SIZE":      true,
-	"CHUR_LOCAL_BASE_PATH":      true,
-	"CHUR_KEEPER_URL":           true,
-	"CHUR_KEEPER_TLS_CERT_PATH": true,
-	"CHUR_KEEPER_TLS_KEY_PATH":  true,
-	"CHUR_KEEPER_SERVER_CA":     true,
+	"CHUR_PROVIDER":                      true,
+	"CHUR_SECRET_REF":                    true,
+	"CHUR_SECRET_KEY":                    true,
+	"CHUR_MOUNT_PATH":                    true,
+	"CHUR_MAX_SECRET_SIZE":               true,
+	"CHUR_LOCAL_BASE_PATH":               true,
+	"CHUR_KEEPER_URL":                    true,
+	"CHUR_KEEPER_TLS_CERT_PATH":          true,
+	"CHUR_KEEPER_TLS_KEY_PATH":           true,
+	"CHUR_KEEPER_SERVER_CA":              true,
+	"CHUR_KEEPER_INSECURE_SKIP_VERIFY":   true,
+	"CHUR_KEEPER_CLIENT_MAX_SECRET_SIZE": true,
 }
 
 func validProviderEnvKey(k string) bool {

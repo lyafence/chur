@@ -132,8 +132,8 @@ Trust assumptions:
 
 - **Scenario:** Secret values are logged.
 - **Mitigation:** chur logs structured metadata only (provider, namespace, pod,
-  duration, result). Secret values, secret refs, and secret keys are never
-  logged. The webhook exposes Prometheus metrics on its health port (`/metrics`)
+  duration, result). Secret values and secret keys are never logged. Secret
+  refs may appear in init container and keeper logs for debuggability. The webhook exposes Prometheus metrics on its health port (`/metrics`)
   — these contain only aggregate counters and histograms, no identifying
   information.
 

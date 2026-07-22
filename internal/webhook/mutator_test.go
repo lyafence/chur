@@ -916,6 +916,8 @@ func TestParseProviderEnvReservedEnv(t *testing.T) {
 		"CHUR_KEEPER_TLS_CERT_PATH",
 		"CHUR_KEEPER_TLS_KEY_PATH",
 		"CHUR_KEEPER_SERVER_CA",
+		"CHUR_KEEPER_INSECURE_SKIP_VERIFY",
+		"CHUR_KEEPER_CLIENT_MAX_SECRET_SIZE",
 	} {
 		t.Run(reserved, func(t *testing.T) {
 			anno := `{"` + reserved + `":"value"}`
