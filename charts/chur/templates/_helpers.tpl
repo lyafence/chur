@@ -53,8 +53,23 @@ namespaceSelector:
     - key: kubernetes.io/metadata.name
       operator: NotIn
       values:
-        - {{ .Release.Namespace }}
         {{- range .Values.webhook.skipNamespaces }}
         - {{ . }}
         {{- end }}
+        {{- if not (has .Release.Namespace .Values.webhook.allowedNamespaces) }}
+        - {{ .Release.Namespace }}
+        {{- end }}
+{{- end }}
+
+{{- define "chur.webhook.tlsChecksum" -}}
+{{- if eq .Values.tls.provider "helmGenerated" }}
+{{- $secret := lookup "v1" "Secret" .Release.Namespace .Values.tls.userSecret.name }}
+{{- if $secret }}
+{{- $secret.data | toJson | sha256sum }}
+{{- else }}
+{{- .Values.tls.userSecret.name | sha256sum }}-helmGenerated
+{{- end }}
+{{- else }}
+{{- .Values.tls.userSecret.name | sha256sum }}-{{ .Values.tls.provider | sha256sum }}
+{{- end }}
 {{- end }}

@@ -1,8 +1,21 @@
 {{- if eq .Values.tls.provider "helmGenerated" }}
+{{- $secret := lookup "v1" "Secret" .Release.Namespace .Values.tls.userSecret.name }}
+{{- $caCert := "" }}
+{{- $tlsCrt := "" }}
+{{- $tlsKey := "" }}
+{{- if $secret }}
+{{- $caCert = index $secret.data "ca.crt" }}
+{{- $tlsCrt = index $secret.data "tls.crt" }}
+{{- $tlsKey = index $secret.data "tls.key" }}
+{{- else }}
 {{- $days := int .Values.tls.helmGenerated.validityDays -}}
 {{- $ca := genCA "chur-webhook-ca" $days -}}
 {{- $svc := include "chur.webhook.serviceName" . -}}
 {{- $cert := genSignedCert $svc nil (list $svc) $days $ca -}}
+{{- $caCert = $ca.Cert | b64enc }}
+{{- $tlsCrt = $cert.Cert | b64enc }}
+{{- $tlsKey = $cert.Key | b64enc }}
+{{- end }}
 apiVersion: v1
 kind: Secret
 metadata:
@@ -11,9 +24,9 @@ metadata:
     {{- include "chur.labels" . | nindent 4 }}
 type: kubernetes.io/tls
 data:
-  tls.crt: {{ $cert.Cert | b64enc }}
-  tls.key: {{ $cert.Key | b64enc }}
-  ca.crt: {{ $ca.Cert | b64enc }}
+  tls.crt: {{ $tlsCrt }}
+  tls.key: {{ $tlsKey }}
+  ca.crt: {{ $caCert }}
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: MutatingWebhookConfiguration
@@ -29,7 +42,7 @@ webhooks:
         namespace: {{ .Release.Namespace }}
         path: /
         port: {{ .Values.service.port }}
-      caBundle: {{ $ca.Cert | b64enc }}
+      caBundle: {{ $caCert }}
     rules:
       - operations: ["CREATE"]
         apiGroups: [""]

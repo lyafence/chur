@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/lyafence/chur/internal/health"
 	"github.com/lyafence/chur/internal/metrics"
 	churtls "github.com/lyafence/chur/internal/tls"
 	"github.com/lyafence/chur/internal/validate"
@@ -53,7 +54,7 @@ func Serve(ctx context.Context, cfg *Config, tlsCfg *tls.Config, listener net.Li
 	var healthSrv *http.Server
 	if cfg.HealthListen != "" {
 		healthMux := http.NewServeMux()
-		healthMux.HandleFunc("/healthz", healthz)
+		healthMux.HandleFunc("/healthz", health.HealthzHandler("keeper").ServeHTTP)
 		healthMux.Handle("/metrics", metrics.Handler())
 		healthSrv = &http.Server{
 			Addr:              cfg.HealthListen,
@@ -116,18 +117,6 @@ func Serve(ctx context.Context, cfg *Config, tlsCfg *tls.Config, listener net.Li
 	return shutdownErr
 }
 
-func healthz(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	if _, err := w.Write([]byte(`{"status":"ok"}`)); err != nil {
-		slog.WarnContext(r.Context(), "keeper health: failed to write response", "error", err)
-	}
-}
-
 func handleGetSecret(b Backend, maxSize int64, sem chan struct{}, backendName string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
@@ -181,8 +170,8 @@ func handleGetSecret(b Backend, maxSize int64, sem chan struct{}, backendName st
 				"backend", backendName,
 				"duration_ms", durationMs,
 				"result", "error",
-				"error", err,
 			)
+			slog.DebugContext(r.Context(), "keeper: backend get failed details", "error", err)
 			recordKeeperMetric(backendName, "error", start)
 			writeError(r.Context(), w, "internal server error", http.StatusInternalServerError)
 			return

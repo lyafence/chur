@@ -16,7 +16,7 @@ spec:
         {{- include "chur.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: webhook
       annotations:
-        checksum/tls: {{ .Values.tls.userSecret.name | sha256sum }}-{{ .Values.tls.provider | sha256sum }}
+        checksum/tls: {{ include "chur.webhook.tlsChecksum" . }}
     spec:
       serviceAccountName: {{ include "chur.serviceAccountName" . }}
       {{- with .Values.webhook.priorityClassName }}

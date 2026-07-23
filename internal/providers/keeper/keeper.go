@@ -91,11 +91,9 @@ func (p *KeeperProvider) GetSecret(ctx context.Context, ref string) ([]byte, err
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		respBody, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-		if err != nil {
-			slog.WarnContext(ctx, "keeper: failed to read error response body", "status", resp.Status, "error", err)
-		}
-		return nil, fmt.Errorf("keeper: %s: %s", resp.Status, string(respBody))
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+		slog.DebugContext(ctx, "keeper: error response", "status", resp.Status, "body", string(body))
+		return nil, fmt.Errorf("keeper: %s", resp.Status)
 	}
 
 	data, err := io.ReadAll(io.LimitReader(resp.Body, p.maxSecretSize+1))

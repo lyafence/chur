@@ -97,14 +97,16 @@ spec:
               mountPath: /etc/chur-keeper/tls
               readOnly: true
           {{- end }}
+          {{- $caPath := .Values.keeper.mtls.clientCA.path | default "/etc/chur-keeper/client-ca/ca.crt" }}
+          {{- $caDir := $caPath | dir }}
           {{- if and (eq .Values.keeper.tlsMode "mtls") .Values.keeper.mtls.clientCA.existingSecret }}
             - name: client-ca
-              mountPath: /etc/chur-keeper/client-ca
+              mountPath: {{ $caDir }}
               readOnly: true
           {{- end }}
           {{- if and (eq .Values.keeper.tlsMode "mtls") .Values.keeper.mtls.clientCA.existingConfigMap }}
             - name: client-ca
-              mountPath: /etc/chur-keeper/client-ca
+              mountPath: {{ $caDir }}
               readOnly: true
           {{- end }}
           {{- if .Values.keeper.clientTLS.existingSecret }}

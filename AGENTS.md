@@ -43,6 +43,7 @@
 | `internal/keeper/exec/` | Exec backend for chur-keeper |
 | `internal/keeper/http/` | HTTP backend for chur-keeper |
 | `internal/bytesize/` | Byte-size parsing utility |
+| `internal/health/` | Shared health check HTTP handler (webhook + keeper) |
 | `internal/providers/keeper/` | Keeper HTTP provider for chur-init |
 | `test/e2e/` | End-to-end tests |
 | `charts/chur/` | Helm chart for deploying the webhook |
