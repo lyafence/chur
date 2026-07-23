@@ -55,12 +55,14 @@ docker-webhook:
 	$(DOCKER) build --platform $(TARGETOS)/$(TARGETARCH) \
 		--build-arg TARGETOS=$(TARGETOS) \
 		--build-arg TARGETARCH=$(TARGETARCH) \
+		--build-arg VERSION=$(VERSION) \
 		-t $(APP_NAME)-webhook:$(VERSION) -f Dockerfile.webhook .
 
 docker-init:
 	$(DOCKER) build --platform $(TARGETOS)/$(TARGETARCH) \
 		--build-arg TARGETOS=$(TARGETOS) \
 		--build-arg TARGETARCH=$(TARGETARCH) \
+		--build-arg VERSION=$(VERSION) \
 		--build-arg GOFLAGS="-tags=provider_k8s" \
 		-t $(APP_NAME)-init:$(VERSION) -f Dockerfile.init .
 
@@ -68,6 +70,7 @@ docker-keeper:
 	$(DOCKER) build --platform $(TARGETOS)/$(TARGETARCH) \
 		--build-arg TARGETOS=$(TARGETOS) \
 		--build-arg TARGETARCH=$(TARGETARCH) \
+		--build-arg VERSION=$(VERSION) \
 		-t $(APP_NAME)-keeper:$(VERSION) -f Dockerfile.keeper .
 
 docker: docker-webhook docker-init docker-keeper

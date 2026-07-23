@@ -36,8 +36,6 @@ func (b *FSBackend) GetSecret(ctx context.Context, ref string) ([]byte, error) {
 		err  error
 	}
 	ch := make(chan readResult, 1)
-	// goroutine terminates after io.ReadAll completes (bounded by maxSize+1).
-	// ctx cancellation only prevents waiting for the result, not the read itself.
 	go func() {
 		data, err := io.ReadAll(io.LimitReader(f, b.maxSize+1))
 		ch <- readResult{data, err}
@@ -45,6 +43,8 @@ func (b *FSBackend) GetSecret(ctx context.Context, ref string) ([]byte, error) {
 
 	select {
 	case <-ctx.Done():
+		f.Close()
+		<-ch
 		return nil, ctx.Err()
 	case r := <-ch:
 		if r.err != nil {

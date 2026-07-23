@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"os/exec"
 	"time"
 
@@ -14,17 +13,27 @@ import (
 )
 
 type limitedWriter struct {
-	buf   bytes.Buffer
-	limit int64
+	buf      bytes.Buffer
+	limit    int64
+	overflow bool
 }
 
 func (w *limitedWriter) Write(p []byte) (int, error) {
 	remaining := w.limit - int64(w.buf.Len())
 	if remaining <= 0 {
+		if !w.overflow {
+			w.overflow = true
+			w.buf.WriteString("...(truncated)")
+		}
 		return len(p), nil
 	}
 	if int64(len(p)) > remaining {
-		p = p[:remaining]
+		w.buf.Write(p[:remaining])
+		if !w.overflow {
+			w.overflow = true
+			w.buf.WriteString("...(truncated)")
+		}
+		return len(p), nil
 	}
 	return w.buf.Write(p)
 }
@@ -74,33 +83,30 @@ func (b *ExecBackend) GetSecret(ctx context.Context, ref string) ([]byte, error)
 	cmd.Stderr = stderr
 
 	if err := cmd.Start(); err != nil {
+		stdout.Close()
 		return nil, fmt.Errorf("exec: start: %w", err)
 	}
 
 	var out bytes.Buffer
-	n, err := io.CopyN(&out, stdout, b.maxStdout+1)
+	n, copyErr := io.CopyN(&out, stdout, b.maxStdout+1)
+	stdout.Close()
+
 	if n > b.maxStdout {
-		if err := cmd.Process.Kill(); err != nil {
-			slog.WarnContext(ctx, "exec: failed to kill process", "error", err)
-		}
-		if err := cmd.Wait(); err != nil {
-			slog.WarnContext(ctx, "exec: wait after kill returned error", "error", err)
-		}
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
 		return nil, fmt.Errorf("exec: stdout exceeds max size (%d bytes)", b.maxStdout)
 	}
-	if err != nil && !errors.Is(err, io.EOF) {
-		return nil, fmt.Errorf("exec: read stdout: %w", err)
-	}
 
-	if err := cmd.Wait(); err != nil {
+	waitErr := cmd.Wait()
+	if copyErr != nil && !errors.Is(copyErr, io.EOF) {
+		return nil, fmt.Errorf("exec: read stdout: %w", copyErr)
+	}
+	if waitErr != nil {
 		if ctx.Err() != nil {
 			return nil, fmt.Errorf("exec: command timed out")
 		}
 		stderrMsg := stderr.String()
-		if b.maxStdout > 0 && int64(len(stderrMsg)) > b.maxStdout {
-			stderrMsg = stderrMsg[:b.maxStdout] + "...(truncated)"
-		}
-		return nil, fmt.Errorf("exec: %s: %w (stderr: %s)", b.command, err, stderrMsg)
+		return nil, fmt.Errorf("exec: %s: %w (stderr: %s)", b.command, waitErr, stderrMsg)
 	}
 
 	return out.Bytes(), nil

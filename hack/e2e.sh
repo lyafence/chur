@@ -29,13 +29,22 @@ command -v kind >/dev/null || { echo "ERROR: kind is required"; exit 1; }
 command -v kubectl >/dev/null || { echo "ERROR: kubectl is required"; exit 1; }
 command -v helm >/dev/null || { echo "ERROR: helm is required"; exit 1; }
 
+create_kind_cluster() {
+	if command -v systemd-run >/dev/null 2>&1 && \
+	   systemctl --user is-system-running >/dev/null 2>&1; then
+		systemd-run --user --scope -q -p Delegate=yes -- \
+			kind create cluster --name "$E2E_CLUSTER" --wait 60s
+	else
+		kind create cluster --name "$E2E_CLUSTER" --wait 60s
+	fi
+}
+
 if kind get clusters | grep -q "^$E2E_CLUSTER$"; then
 	echo "Kind cluster $E2E_CLUSTER already exists, reusing it..."
 	kubectl config use-context "kind-$E2E_CLUSTER"
 else
 	echo "Creating Kind cluster..."
-	systemd-run --user --scope -q -p Delegate=yes -- \
-		kind create cluster --name "$E2E_CLUSTER" --wait 60s
+	create_kind_cluster
 fi
 
 echo "Loading images into Kind..."

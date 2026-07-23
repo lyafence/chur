@@ -12,7 +12,7 @@ metadata:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: chur-secret-reader
+  name: {{ include "chur.fullname" $ }}-secret-reader
   namespace: {{ $ns }}
   labels:
     {{- include "chur.labels" $ | nindent 4 }}
@@ -24,14 +24,14 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: chur-secret-reader
+  name: {{ include "chur.fullname" $ }}-secret-reader
   namespace: {{ $ns }}
   labels:
     {{- include "chur.labels" $ | nindent 4 }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
-  name: chur-secret-reader
+  name: {{ include "chur.fullname" $ }}-secret-reader
 subjects:
   - kind: ServiceAccount
     name: {{ $.Values.rbac.serviceAccountName }}

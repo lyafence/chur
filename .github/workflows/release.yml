@@ -111,14 +111,17 @@ jobs:
       - name: Push images (multi-arch)
         run: |
           docker buildx build --push --platform linux/amd64,linux/arm64 \
+            --build-arg VERSION=${{ github.ref_name }} \
             -t ghcr.io/${{ github.repository_owner }}/chur-webhook:${{ github.ref_name }} \
             -t ghcr.io/${{ github.repository_owner }}/chur-webhook:latest \
             -f Dockerfile.webhook .
           docker buildx build --push --platform linux/amd64,linux/arm64 \
+            --build-arg VERSION=${{ github.ref_name }} \
             -t ghcr.io/${{ github.repository_owner }}/chur-init:${{ github.ref_name }} \
             -t ghcr.io/${{ github.repository_owner }}/chur-init:latest \
             -f Dockerfile.init .
           docker buildx build --push --platform linux/amd64,linux/arm64 \
+            --build-arg VERSION=${{ github.ref_name }} \
             -t ghcr.io/${{ github.repository_owner }}/chur-keeper:${{ github.ref_name }} \
             -t ghcr.io/${{ github.repository_owner }}/chur-keeper:latest \
             -f Dockerfile.keeper .
@@ -157,7 +160,7 @@ jobs:
         with:
           charts_dir: charts
           pages_branch: helm-charts
-          mark_as_latest: false
+          mark_as_latest: true
           skip_existing: true
         env:
           CR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
