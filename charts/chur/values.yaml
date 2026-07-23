@@ -237,10 +237,8 @@ networkPolicy:
   # When enabled, only expected traffic is allowed. Default is disabled because
   # the API server source CIDR varies per cluster and may require custom rules.
   #
-  # When enabling, uncomment and adjust the ingress selectors in
-  # templates/networkpolicy.yaml for your cluster:
-  #   - webhook: restrict to kube-system or the API server CIDR
-  #     (the default in the template selects kube-system pods)
-  #   - keeper: restrict to namespaces that use chur.io/provider: keeper
-  #     (the template has a commented-out namespaceSelector: {} placeholder)
+  # Webhook: ingress from kube-system (API server).
+  # Keeper: ingress from namespaces listed in rbac.namespaces.
+  #   If rbac.namespaces is empty, only the release namespace is allowed.
+  #   To allow the keeper provider from app namespaces, add them to rbac.namespaces.
   enabled: false

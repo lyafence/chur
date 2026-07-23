@@ -14,6 +14,8 @@ import (
 	"github.com/lyafence/chur/internal/validate"
 )
 
+const drainLimit = 1 << 20
+
 type HTTPBackend struct {
 	baseURL string
 	token   string
@@ -91,6 +93,7 @@ func (b *HTTPBackend) GetSecret(ctx context.Context, ref string) ([]byte, error)
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, drainLimit))
 		return nil, fmt.Errorf("http: %s", resp.Status)
 	}
 

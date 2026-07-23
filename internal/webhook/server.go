@@ -15,6 +15,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 
+	"github.com/lyafence/chur/internal/health"
 	"github.com/lyafence/chur/internal/metrics"
 )
 
@@ -277,20 +278,8 @@ func (s *Server) mutateWithMetrics(ctx context.Context, review *admissionv1.Admi
 // HealthHandler returns an HTTP handler with /healthz, /readyz, and /metrics endpoints.
 func HealthHandler() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/healthz", healthz)
-	mux.HandleFunc("/readyz", healthz)
+	mux.HandleFunc("/healthz", health.HealthzHandler("webhook").ServeHTTP)
+	mux.HandleFunc("/readyz", health.HealthzHandler("webhook").ServeHTTP)
 	mux.Handle("/metrics", metrics.Handler())
 	return mux
-}
-
-func healthz(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	if _, err := w.Write([]byte(`{"status":"ok"}`)); err != nil {
-		slog.WarnContext(r.Context(), "health: failed to write response", "error", err)
-	}
 }

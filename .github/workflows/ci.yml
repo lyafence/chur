@@ -15,7 +15,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           go-version: "1.26"
           check-latest: true
@@ -31,7 +31,18 @@ jobs:
       - name: Test
         run: make test
 
+      - uses: azure/setup-helm@v5
+        with:
+          version: latest
+
+      - name: Lint Helm chart
+        run: helm lint charts/chur/
+
+      - name: Template Helm chart
+        run: helm template chur charts/chur/ --debug > /dev/null
+
       - name: Coveralls
+        continue-on-error: true
         uses: coverallsapp/github-action@v2
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -43,7 +54,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           go-version: "1.26"
           check-latest: true

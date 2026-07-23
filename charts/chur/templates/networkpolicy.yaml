@@ -30,16 +30,22 @@ spec:
       app.kubernetes.io/component: keeper
   policyTypes: [Ingress]
   ingress:
+    {{- $allowed := .Values.rbac.namespaces }}
+    {{- if $allowed }}
+    {{- range $ns := $allowed }}
     - from:
-        # Allow from pods using chur-init with the keeper provider. chur-init
-        # runs in application namespaces — restrict to the namespaces that
-        # contain pods with chur.io/provider: keeper annotations.
-        # Uncomment and adjust for your environment. Example:
-        # - namespaceSelector:
-        #     matchLabels:
-        #       kubernetes.io/metadata.name: my-app
-        # For all-namespace access (less restrictive):
-        # - namespaceSelector: {}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $ns }}
+      ports:
+        - port: {{ $.Values.keeper.listen | toString | splitList ":" | last | atoi | default 9443 }}
+    {{- end }}
+    {{- else }}
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Release.Namespace }}
       ports:
         - port: {{ .Values.keeper.listen | toString | splitList ":" | last | atoi | default 9443 }}
+    {{- end }}
 {{- end }}
