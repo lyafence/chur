@@ -127,6 +127,7 @@ func TestGetSecretInvalidRef(t *testing.T) {
 }
 
 func TestGetSecretPermissionDenied(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	fullPath := filepath.Join(dir, "noread")
 	if err := os.WriteFile(fullPath, []byte("secret"), 0000); err != nil {
@@ -140,6 +141,7 @@ func TestGetSecretPermissionDenied(t *testing.T) {
 }
 
 func TestGetSecretDirRef(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	subdir := filepath.Join(dir, "mydir")
 	if err := os.MkdirAll(subdir, 0755); err != nil {

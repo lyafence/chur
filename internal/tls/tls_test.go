@@ -175,6 +175,7 @@ func TestServerTLSConfig_MTLS(t *testing.T) {
 }
 
 func TestGenerateTLSCert(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	certFile := filepath.Join(dir, "tls.crt")
 	keyFile := filepath.Join(dir, "tls.key")

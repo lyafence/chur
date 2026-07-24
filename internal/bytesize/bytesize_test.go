@@ -18,14 +18,16 @@ func TestParse(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		got, err := Parse(tc.in)
-		if err != nil {
-			t.Errorf("Parse(%q) error: %v", tc.in, err)
-			continue
-		}
-		if got != tc.want {
-			t.Errorf("Parse(%q) = %d, want %d", tc.in, got, tc.want)
-		}
+		t.Run(tc.in, func(t *testing.T) {
+			got, err := Parse(tc.in)
+			if err != nil {
+				t.Errorf("Parse(%q) error: %v", tc.in, err)
+				return
+			}
+			if got != tc.want {
+				t.Errorf("Parse(%q) = %d, want %d", tc.in, got, tc.want)
+			}
+		})
 	}
 }
 

@@ -234,4 +234,4 @@ chur emits structured JSON logs from both `chur-webhook` and `chur-init`. These
 logs are the basic audit trail: they record when a secret is injected, by which
 provider, and the duration. Secret references and keys are excluded from logs.
 Advanced audit capabilities (for example, streaming to a SIEM or Kubernetes
-Audit Events integration) are not implemented in v0.3+ (as of this writing).
+Audit Events integration) are not implemented (as of this writing).

@@ -167,6 +167,10 @@ func (s *Server) mutate(ctx context.Context, review *admissionv1.AdmissionReview
 			"provider", ai.Provider,
 			"duration_ms", ai.DurationMs,
 			"result", ai.Result,
+			"error", "validation failed",
+		)
+		slog.DebugContext(ctx, "audit error details",
+			"request_uid", ai.RequestUID,
 			"error", err,
 		)
 		resp.Response.Allowed = false

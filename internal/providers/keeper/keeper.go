@@ -123,7 +123,7 @@ func init() {
 		if v := os.Getenv("CHUR_KEEPER_CLIENT_MAX_SECRET_SIZE"); v != "" {
 			n, err := bytesize.Parse(v)
 			if err != nil {
-				return nil, fmt.Errorf("invalid CHUR_KEEPER_CLIENT_MAX_SECRET_SIZE %q: %w", v, err)
+				return nil, fmt.Errorf("keeper: invalid CHUR_KEEPER_CLIENT_MAX_SECRET_SIZE %q: %w", v, err)
 			}
 			if n > 0 {
 				p.maxSecretSize = n

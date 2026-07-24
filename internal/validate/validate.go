@@ -4,7 +4,6 @@ package validate
 import (
 	"fmt"
 	"strings"
-	"unicode"
 )
 
 // ValidateSecretRef ensures ref is a flat, filename-safe string with no
@@ -42,8 +41,12 @@ func ValidateSecretRef(ref string) error {
 	return nil
 }
 
+// isAllowedRune restricts secret refs, keys, and mount paths to ASCII
+// alphanumerics, hyphens, underscores, and dots. Unicode letters are rejected
+// to prevent homoglyph attacks (e.g. Cyrillic 'а' vs ASCII 'a'). This is a
+// security hardening decision, not a platform limitation.
 func isAllowedRune(r rune) bool {
-	return unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-' || r == '_' || r == '.'
+	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' || r == '.'
 }
 
 // ValidateSecretKey validates a Kubernetes Secret data key name. Kubernetes
@@ -93,7 +96,7 @@ func ValidateMountPath(path string) error {
 }
 
 func isAllowedMountRune(r rune) bool {
-	return unicode.IsLetter(r) || unicode.IsDigit(r) || r == '/' || r == '-' || r == '_' || r == '.'
+	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '/' || r == '-' || r == '_' || r == '.'
 }
 
 // ValidateKeeperRef validates a ref used by the keeper provider.

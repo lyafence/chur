@@ -1,6 +1,7 @@
 package bytesize
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"strconv"
@@ -11,7 +12,7 @@ import (
 func Parse(s string) (int64, error) {
 	s = strings.TrimSpace(s)
 	if s == "" {
-		return 0, fmt.Errorf("empty size")
+		return 0, errors.New("empty size")
 	}
 
 	var multiplier int64 = 1

@@ -49,7 +49,7 @@ vuln:
 
 clean:
 	rm -rf bin/ dist/ release/
-	rm -f coverage.out *.log coverage.html
+	rm -f init keeper webhook coverage.out *.log coverage.html
 
 docker-webhook:
 	$(DOCKER) build --platform $(TARGETOS)/$(TARGETARCH) \

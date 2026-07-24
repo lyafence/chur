@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net"
 	"net/http"
@@ -112,6 +114,7 @@ func main() {
 	cfg.KeeperTLSKeyPath = os.Getenv("CHUR_KEEPER_TLS_KEY_PATH")
 	cfg.KeeperServerCA = os.Getenv("CHUR_KEEPER_SERVER_CA")
 	cfg.KeeperClientCertSecretName = os.Getenv("CHUR_KEEPER_CLIENT_CERT_SECRET_NAME")
+	cfg.KeeperClientMaxSecretSize = os.Getenv("CHUR_KEEPER_CLIENT_MAX_SECRET_SIZE")
 
 	maxSize, err := resource.ParseQuantity(cfg.MaxSecretSize)
 	if err == nil && cfg.VolumeSizeLimit.Value() < maxSize.Value() {
@@ -176,7 +179,7 @@ func main() {
 	certFile := firstNonEmpty(os.Getenv("CHUR_TLS_CERT_PATH"), "/etc/chur/tls/tls.crt")
 	keyFile := firstNonEmpty(os.Getenv("CHUR_TLS_KEY_PATH"), "/etc/chur/tls/tls.key")
 
-	if _, err := os.Stat(certFile); os.IsNotExist(err) {
+	if _, err := os.Stat(certFile); errors.Is(err, fs.ErrNotExist) {
 		if os.Getenv("CHUR_TLS_AUTO_GENERATE") == "1" {
 			dnsName := os.Getenv("CHUR_TLS_DNS_NAME")
 			if dnsName == "" {
@@ -245,7 +248,7 @@ func main() {
 	go func() {
 		slog.InfoContext(ctx, "starting chur-webhook admission",
 			"version", version, "addr", listenAddr, "tls_mode", tlsMode)
-		if err := httpSrv.ServeTLS(listener, certFile, keyFile); err != nil && err != http.ErrServerClosed {
+		if err := httpSrv.ServeTLS(listener, certFile, keyFile); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			srvErr <- fmt.Errorf("admission server: %w", err)
 			return
 		}
@@ -253,7 +256,7 @@ func main() {
 
 	go func() {
 		slog.InfoContext(ctx, "starting chur-webhook health", "addr", healthSrv.Addr)
-		if err := healthSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := healthSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			srvErr <- fmt.Errorf("health server: %w", err)
 			return
 		}
@@ -299,7 +302,7 @@ func firstNonEmpty(a, b string) string {
 
 func validateDNS1123Label(s string) error {
 	if len(s) == 0 || len(s) > 63 {
-		return fmt.Errorf("must be 1-63 characters long")
+		return errors.New("must be 1-63 characters long")
 	}
 	for i, r := range s {
 		if (r < 'a' || r > 'z') && (r < '0' || r > '9') && r != '-' {

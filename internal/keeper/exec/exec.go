@@ -106,6 +106,9 @@ func (b *ExecBackend) GetSecret(ctx context.Context, ref string) ([]byte, error)
 			return nil, fmt.Errorf("exec: command timed out")
 		}
 		stderrMsg := stderr.String()
+		if len(stderrMsg) > 1024 {
+			stderrMsg = stderrMsg[:1024] + "...(truncated)"
+		}
 		return nil, fmt.Errorf("exec: %s: %w (stderr: %s)", b.command, waitErr, stderrMsg)
 	}
 

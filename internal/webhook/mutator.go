@@ -23,9 +23,9 @@ import (
 // Admission-time provider validation does NOT guarantee runtime availability —
 // chur-init may be built with a different build tag set.
 var validProviders = map[string]bool{
-	"env":          true,
-	"local":        true,
-	"k8s":          true,
+	providerEnv:    true,
+	providerLocal:  true,
+	providerK8s:    true,
 	providerKeeper: true,
 }
 
@@ -34,6 +34,9 @@ var validProviders = map[string]bool{
 var ErrValidation = errors.New("validation error")
 
 const (
+	providerEnv    = "env"
+	providerLocal  = "local"
+	providerK8s    = "k8s"
 	providerKeeper = "keeper"
 
 	annotationProvider         = "chur.io/provider"
@@ -82,6 +85,7 @@ type Config struct {
 	KeeperTLSKeyPath           string
 	KeeperServerCA             string
 	KeeperClientCertSecretName string
+	KeeperClientMaxSecretSize  string
 }
 
 // DefaultConfig returns a Config with safe defaults.
@@ -313,6 +317,9 @@ func MutatePod(pod *corev1.Pod, cfg *Config) ([]PatchOperation, *AuditInfo, erro
 		if cfg.KeeperServerCA != "" {
 			initEnv = append(initEnv, corev1.EnvVar{Name: "CHUR_KEEPER_SERVER_CA", Value: cfg.KeeperServerCA})
 		}
+		if cfg.KeeperClientMaxSecretSize != "" {
+			initEnv = append(initEnv, corev1.EnvVar{Name: "CHUR_KEEPER_CLIENT_MAX_SECRET_SIZE", Value: cfg.KeeperClientMaxSecretSize})
+		}
 		if pod.Annotations[annotationKeeperSkipVerify] == "1" || pod.Annotations[annotationKeeperSkipVerify] == "true" {
 			initEnv = append(initEnv, corev1.EnvVar{Name: "CHUR_KEEPER_INSECURE_SKIP_VERIFY", Value: "1"})
 		}
@@ -326,7 +333,7 @@ func MutatePod(pod *corev1.Pod, cfg *Config) ([]PatchOperation, *AuditInfo, erro
 	// The local provider reads files from the node filesystem. Mount the base
 	// directory as a read-only hostPath volume into the init container only.
 	localVolName := "chur-local-base"
-	if providerName == "local" && !volumeExists(pod.Spec.Volumes, localVolName) {
+	if providerName == providerLocal && !volumeExists(pod.Spec.Volumes, localVolName) {
 		patches = append(patches, PatchOperation{
 			Op:   opAdd,
 			Path: "/spec/volumes/-",
@@ -372,7 +379,7 @@ func MutatePod(pod *corev1.Pod, cfg *Config) ([]PatchOperation, *AuditInfo, erro
 			{Name: volName, MountPath: mountPath},
 		},
 	}
-	if providerName == "local" {
+	if providerName == providerLocal {
 		initContainer.VolumeMounts = append(initContainer.VolumeMounts, corev1.VolumeMount{
 			Name:      localVolName,
 			MountPath: cfg.LocalBasePath,

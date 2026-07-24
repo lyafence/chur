@@ -29,6 +29,9 @@ func TestValidateSecretRef(t *testing.T) {
 		{"end-dot", "secret.", true},
 		{"space", "secret name", true},
 		{"special", "secret!", true},
+		{"cyrillic", "secret-а", true},
+		{"chinese", "秘密", true},
+		{"arabic", "سر", true},
 	}
 
 	for _, tt := range tests {
@@ -64,6 +67,7 @@ func TestValidateMountPath(t *testing.T) {
 		{"space", "/path/with space", true},
 		{"semicolon", "/path/with;chars", true},
 		{"special", "/path/with!special", true},
+		{"cyrillic", "/секреты", true},
 		{"too-long", "/" + strings.Repeat("a", 4096), true},
 	}
 
@@ -83,25 +87,28 @@ func TestValidateMountPath(t *testing.T) {
 func TestValidateKeeperRef(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
+		name  string
 		ref   string
 		valid bool
 	}{
-		{"prod/db/password", true},
-		{"simple", true},
-		{"", false},
-		{"/absolute", false},
-		{"../etc/passwd", false},
-		{"a\\b", false},
-		{"a\x00b", false},
+		{"simple path", "prod/db/password", true},
+		{"simple name", "simple", true},
+		{"empty", "", false},
+		{"absolute", "/absolute", false},
+		{"traversal", "../etc/passwd", false},
+		{"backslash", "a\\b", false},
+		{"null byte", "a\x00b", false},
 	}
 	for _, tc := range tests {
-		err := ValidateKeeperRef(tc.ref)
-		if tc.valid && err != nil {
-			t.Errorf("ValidateKeeperRef(%q) unexpected error: %v", tc.ref, err)
-		}
-		if !tc.valid && err == nil {
-			t.Errorf("ValidateKeeperRef(%q) expected error", tc.ref)
-		}
+		t.Run(tc.name, func(t *testing.T) {
+			err := ValidateKeeperRef(tc.ref)
+			if tc.valid && err != nil {
+				t.Errorf("ValidateKeeperRef(%q) unexpected error: %v", tc.ref, err)
+			}
+			if !tc.valid && err == nil {
+				t.Errorf("ValidateKeeperRef(%q) expected error", tc.ref)
+			}
+		})
 	}
 }
 

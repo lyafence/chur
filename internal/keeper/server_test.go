@@ -3,15 +3,19 @@ package keeper
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/lyafence/chur/internal/metrics"
+	churtls "github.com/lyafence/chur/internal/tls"
 )
 
 type mockBackend struct {
@@ -78,6 +82,38 @@ func TestHandleGetSecretBadJSON(t *testing.T) {
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestHandleGetSecretEmptyRef(t *testing.T) {
+	t.Parallel()
+	b := &mockBackend{}
+	sem := make(chan struct{}, 100)
+	h := handleGetSecret(b, 1<<20, sem, b.Name())
+
+	tests := []struct {
+		name string
+		body []byte
+	}{
+		{"empty ref", []byte(`{"ref":""}`)},
+		{"empty object", []byte(`{}`)},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, "/v1/secrets/get", bytes.NewReader(tc.body))
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, req)
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+			}
+			var resp map[string]string
+			if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+				t.Fatal(err)
+			}
+			if resp["error"] == "" {
+				t.Error("expected error message in response")
+			}
+		})
 	}
 }
 
@@ -198,5 +234,117 @@ func TestKeeperMetrics(t *testing.T) {
 	}
 	if !strings.Contains(bodyStr, "chur_keeper_request_duration_seconds") {
 		t.Error("expected chur_keeper_request_duration_seconds in metrics output")
+	}
+}
+
+func TestServerTLSConfig_SelfSignedWithCerts(t *testing.T) {
+	dir := t.TempDir()
+	certFile := filepath.Join(dir, "tls.crt")
+	keyFile := filepath.Join(dir, "tls.key")
+	if err := churtls.GenerateTLSCert("localhost", certFile, keyFile); err != nil {
+		t.Fatal(err)
+	}
+	cfg := &Config{
+		TLSMode:     TLSModeSelfSigned,
+		TLSCertFile: certFile,
+		TLSKeyFile:  keyFile,
+	}
+	tlsCfg, cleanup, err := ServerTLSConfig(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("ServerTLSConfig: %v", err)
+	}
+	t.Cleanup(func() { _ = cleanup() })
+	if tlsCfg == nil {
+		t.Fatal("expected non-nil TLS config")
+	}
+	if tlsCfg.MinVersion != tls.VersionTLS13 {
+		t.Errorf("MinVersion = %d, want %d", tlsCfg.MinVersion, tls.VersionTLS13)
+	}
+	if len(tlsCfg.Certificates) != 1 {
+		t.Errorf("expected 1 certificate, got %d", len(tlsCfg.Certificates))
+	}
+}
+
+func TestServerTLSConfig_SelfSignedAutoGen(t *testing.T) {
+	cfg := &Config{
+		TLSMode: TLSModeSelfSigned,
+	}
+	tlsCfg, cleanup, err := ServerTLSConfig(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("ServerTLSConfig: %v", err)
+	}
+	t.Cleanup(func() { _ = cleanup() })
+	if tlsCfg == nil {
+		t.Fatal("expected non-nil TLS config")
+	}
+	if tlsCfg.MinVersion != tls.VersionTLS13 {
+		t.Errorf("MinVersion = %d, want %d", tlsCfg.MinVersion, tls.VersionTLS13)
+	}
+	if len(tlsCfg.Certificates) != 1 {
+		t.Errorf("expected 1 certificate, got %d", len(tlsCfg.Certificates))
+	}
+}
+
+func TestServerTLSConfig_MTLS(t *testing.T) {
+	dir := t.TempDir()
+	certFile := filepath.Join(dir, "tls.crt")
+	keyFile := filepath.Join(dir, "tls.key")
+	if err := churtls.GenerateTLSCert("keeper", certFile, keyFile); err != nil {
+		t.Fatal(err)
+	}
+	caPEM, _, err := churtls.GenerateCertMemory("ca")
+	if err != nil {
+		t.Fatal(err)
+	}
+	caFile := filepath.Join(dir, "ca.crt")
+	if err := os.WriteFile(caFile, caPEM, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := &Config{
+		TLSMode:      TLSModeMTLS,
+		TLSCertFile:  certFile,
+		TLSKeyFile:   keyFile,
+		ClientCAFile: caFile,
+	}
+	tlsCfg, cleanup, err := ServerTLSConfig(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("ServerTLSConfig: %v", err)
+	}
+	t.Cleanup(func() { _ = cleanup() })
+	if tlsCfg == nil {
+		t.Fatal("expected non-nil TLS config")
+	}
+	if tlsCfg.ClientAuth != tls.RequireAndVerifyClientCert {
+		t.Errorf("ClientAuth = %v, want RequireAndVerifyClientCert", tlsCfg.ClientAuth)
+	}
+	if tlsCfg.ClientCAs == nil {
+		t.Error("expected non-nil ClientCAs for mTLS")
+	}
+}
+
+func TestServerTLSConfig_MTLSMissingCA(t *testing.T) {
+	cfg := &Config{
+		TLSMode:      TLSModeMTLS,
+		TLSCertFile:  "/nonexistent/cert",
+		TLSKeyFile:   "/nonexistent/key",
+		ClientCAFile: "",
+	}
+	_, _, err := ServerTLSConfig(context.Background(), cfg)
+	if err == nil {
+		t.Fatal("expected error for missing ClientCAFile")
+	}
+}
+
+func TestServerTLSConfig_UnknownMode(t *testing.T) {
+	cfg := &Config{
+		TLSMode: "invalid",
+	}
+	_, _, err := ServerTLSConfig(context.Background(), cfg)
+	if err == nil {
+		t.Fatal("expected error for unknown TLS mode")
+	}
+	if !strings.Contains(err.Error(), "unknown tls mode") {
+		t.Errorf("unexpected error: %v", err)
 	}
 }

@@ -27,8 +27,7 @@ func TestFactoriesCreate(t *testing.T) {
 	for name, factory := range registry {
 		p, err := factory(context.Background())
 		if err != nil {
-			t.Logf("skipping provider %q: factory failed (environment not available): %v", name, err)
-			continue
+			t.Skipf("skipping provider %q: factory failed (environment not available): %v", name, err)
 		}
 		if p == nil {
 			t.Errorf("factory for %q returned nil", name)

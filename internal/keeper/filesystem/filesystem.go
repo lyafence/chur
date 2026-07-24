@@ -29,7 +29,6 @@ func (b *FSBackend) GetSecret(ctx context.Context, ref string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("filesystem: open %q: %w", ref, err)
 	}
-	defer f.Close()
 
 	type readResult struct {
 		data []byte
@@ -47,6 +46,7 @@ func (b *FSBackend) GetSecret(ctx context.Context, ref string) ([]byte, error) {
 		<-ch
 		return nil, ctx.Err()
 	case r := <-ch:
+		f.Close()
 		if r.err != nil {
 			return nil, fmt.Errorf("filesystem: read %q: %w", ref, r.err)
 		}

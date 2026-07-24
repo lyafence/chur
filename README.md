@@ -168,7 +168,7 @@ The application reads the secret from `/secrets/<ref>` (e.g. `/secrets/db-creden
 | `chur.io/secret-key` | Key within the Kubernetes Secret's data map (used by the `k8s` provider) | No |
 | `chur.io/mount-path` | Path to mount the tmpfs volume (default: `/secrets`) | No |
 | `chur.io/keeper-skip-verify` | Skip TLS verification when calling `chur-keeper` (dev only, `"1"` or `"true"`) | No |
-| `chur.io/provider-env` | Extra `CHUR_*` env vars for chur-init, JSON format: `{"KEY":"VAL"}`. Only applies when provider is `keeper`. Ignored for other providers. | No |
+| `chur.io/provider-env` | Extra `CHUR_*` env vars for chur-init, JSON format: `{"KEY":"VAL"}`. Only applies when provider is `keeper`. Ignored for other providers. The following keys are reserved and cannot be overridden: `CHUR_PROVIDER`, `CHUR_SECRET_REF`, `CHUR_SECRET_KEY`, `CHUR_MOUNT_PATH`, `CHUR_MAX_SECRET_SIZE`, `CHUR_LOCAL_BASE_PATH`, `CHUR_KEEPER_URL`, `CHUR_KEEPER_TLS_CERT_PATH`, `CHUR_KEEPER_TLS_KEY_PATH`, `CHUR_KEEPER_SERVER_CA`, `CHUR_KEEPER_INSECURE_SKIP_VERIFY`, `CHUR_KEEPER_CLIENT_MAX_SECRET_SIZE`. | No |
 
 > **Dry-run behavior:** During dry-run requests (e.g., `kubectl apply --dry-run=server`),
 > the webhook returns `Allowed=true` without mutation patches. This allows the API
@@ -250,7 +250,7 @@ init container configuration), see [`.env.example`](.env.example).
 | `CHUR_INIT_IMAGE_PULL_POLICY` | `IfNotPresent` | webhook | Init container image pull policy |
 | `CHUR_MAX_CONCURRENT` | `100` | webhook | Max concurrent admission reviews |
 | `CHUR_PROVIDER` | `env` | init | Secret provider name |
-| `CHUR_MAX_SECRET_SIZE` | `1Mi` | init | Max secret size |
+| `CHUR_MAX_SECRET_SIZE` | `1Mi` | webhook, init | Max secret size (webhook reads and passes to init) |
 | `CHUR_KEEPER_URL` | `https://chur-keeper.chur-system.svc:9443` | init | Keeper service URL (auto-injected) |
 | `CHUR_KEEPER_LISTEN` | `:9443` | keeper | HTTPS listen address |
 | `CHUR_KEEPER_HEALTH_LISTEN` | `:9444` | keeper | Health endpoint listen address |
@@ -258,6 +258,8 @@ init container configuration), see [`.env.example`](.env.example).
 | `CHUR_KEEPER_BACKEND` | `filesystem` | keeper | Backend type: `filesystem`, `http`, or `exec` |
 | `CHUR_KEEPER_MAX_SECRET_SIZE` | `1Mi` | keeper | Maximum response size |
 | `CHUR_KEEPER_EXEC_COMMAND` | — | keeper | Command to execute (exec backend) |
+| `CHUR_KEEPER_EXEC_TIMEOUT` | `10` | keeper | Command execution timeout in seconds |
+| `CHUR_KEEPER_EXEC_MAX_STDOUT` | `1048576` | keeper | Max stdout bytes from exec command |
 | `CHUR_KEEPER_BACKEND_FS_ROOT` | `/var/lib/chur-keeper/secrets` | keeper | Root directory (filesystem backend) |
 | `CHUR_KEEPER_HTTP_URL` | — | keeper | Base URL for HTTP backend |
 | `CHUR_KEEPER_HTTP_TOKEN_FILE` | — | keeper | Path to Bearer token file (optional) |
