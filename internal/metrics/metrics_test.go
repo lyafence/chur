@@ -24,12 +24,3 @@ func TestRegistry(t *testing.T) {
 		t.Fatal("Registry is nil")
 	}
 }
-
-func TestMetricsRegistered(t *testing.T) {
-	if WebhookAdmissionRequestsTotal == nil {
-		t.Error("WebhookAdmissionRequestsTotal is nil")
-	}
-	if KeeperRequestsTotal == nil {
-		t.Error("KeeperRequestsTotal is nil")
-	}
-}

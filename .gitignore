@@ -26,14 +26,6 @@ target/
 /webhook
 *.exe
 *.tmp
-*~
-.DS_Store
-*.zip
-*.tar.gz
-*.log
-coverage.out
-
-# Go-specific
 vendor/
 
 # IDE
@@ -42,7 +34,9 @@ vendor/
 *.swp
 *.swo
 *~
-
-# OS
-Thumbs.db
 .DS_Store
+Thumbs.db
+*.zip
+*.tar.gz
+*.log
+coverage.out

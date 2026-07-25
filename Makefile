@@ -1,5 +1,5 @@
 .PHONY: build build-webhook build-init build-keeper fmt lint test check vuln clean \
-        docker docker-webhook docker-init docker-keeper release e2e e2e-build helm-package
+        docker docker-webhook docker-init docker-keeper release e2e e2e-build helm-package hooks
 
 APP_NAME    ?= chur
 VERSION     ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -34,7 +34,8 @@ build-init-minimal:
 	CGO_ENABLED=0 go build $(GOFLAGS) $(LDFLAGS) -o bin/chur-init ./cmd/init
 
 fmt:
-	gofmt -w .
+	gofmt -s -w .
+	goimports -local github.com/lyafence/chur -w .
 
 lint:
 	golangci-lint run ./...
@@ -46,6 +47,9 @@ check: lint test build
 
 vuln:
 	govulncheck ./...
+
+hooks:
+	git config core.hooksPath .githooks
 
 clean:
 	rm -rf bin/ dist/ release/

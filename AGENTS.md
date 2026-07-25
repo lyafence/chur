@@ -110,6 +110,19 @@ When proposing changes, prefer:
 Avoid introducing additional control-plane components, CRDs, controllers, or
 long-running background services unless they solve a demonstrated user problem.
 
+### Backend positioning
+
+| Backend       | Tier          | When to use |
+|---------------|---------------|-------------|
+| `filesystem`  | preferred     | Local files, hostPath, distroless |
+| `http`        | preferred     | Internal HTTPS APIs, custom proxies |
+| `exec`        | escape hatch  | Anything not expressible with native backends |
+
+The exec backend intentionally exists as an escape hatch to avoid expanding
+the native backend surface. Users who opt into exec take responsibility for
+the external binary. If your integration cannot be expressed via `filesystem`
+or `http`, use exec — do not request new backend features.
+
 ## Coding Conventions
 
 - Errors are always checked and wrapped with context.

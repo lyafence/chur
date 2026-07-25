@@ -55,8 +55,7 @@ func Serve(ctx context.Context, cfg *Config, tlsCfg *tls.Config, listener net.Li
 	var healthSrv *http.Server
 	if cfg.HealthListen != "" {
 		healthMux := http.NewServeMux()
-		healthMux.HandleFunc("/healthz", health.HealthzHandler("keeper").ServeHTTP)
-		healthMux.Handle("/metrics", metrics.Handler())
+		health.RegisterHealthEndpoints(healthMux, "keeper", metrics.Handler(), "/healthz", "/metrics")
 		healthSrv = &http.Server{
 			Addr:              cfg.HealthListen,
 			Handler:           healthMux,
@@ -225,7 +224,7 @@ func writeError(ctx context.Context, w http.ResponseWriter, msg string, code int
 // no cert files provided, it generates a temporary certificate and returns a
 // cleanup function that removes the temporary directory. The caller must call
 // cleanup.
-func ServerTLSConfig(_ context.Context, cfg *Config) (*tls.Config, func() error, error) {
+func ServerTLSConfig(ctx context.Context, cfg *Config) (*tls.Config, func() error, error) {
 	switch cfg.TLSMode {
 	case TLSModeSelfSigned:
 		certFile := cfg.TLSCertFile
@@ -246,7 +245,7 @@ func ServerTLSConfig(_ context.Context, cfg *Config) (*tls.Config, func() error,
 			keyFile = tmpDir + "/tls.key"
 			if err := churtls.GenerateTLSCert(dnsName, certFile, keyFile); err != nil {
 				if cleanErr := cleanup(); cleanErr != nil {
-					slog.WarnContext(context.Background(), "keeper: failed to clean up temp dir after cert generation failure", "error", cleanErr)
+					slog.WarnContext(ctx, "keeper: failed to clean up temp dir after cert generation failure", "error", cleanErr)
 				}
 				return nil, nil, fmt.Errorf("keeper: generate cert: %w", err)
 			}
@@ -255,7 +254,7 @@ func ServerTLSConfig(_ context.Context, cfg *Config) (*tls.Config, func() error,
 		tlsCfg, err := churtls.ServerTLSConfig(nil, certFile, keyFile)
 		if err != nil {
 			if cleanErr := cleanup(); cleanErr != nil {
-				slog.WarnContext(context.Background(), "keeper: failed to clean up temp dir after TLS config failure", "error", cleanErr)
+				slog.WarnContext(ctx, "keeper: failed to clean up temp dir after TLS config failure", "error", cleanErr)
 			}
 			return nil, nil, err
 		}

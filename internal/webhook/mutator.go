@@ -47,6 +47,9 @@ const (
 	annotationProviderEnv      = "chur.io/provider-env"
 
 	opAdd = "add"
+
+	volNameLocal  = "chur-local-base"
+	volNameKeeper = "chur-keeper-client-tls"
 )
 
 // AuditInfo contains structured metadata for audit logging.
@@ -193,7 +196,6 @@ func MutatePod(pod *corev1.Pod, cfg *Config) ([]PatchOperation, *AuditInfo, erro
 		return nil, nil, nil
 	}
 
-	// Build audit info from pod metadata and annotations.
 	ai := &AuditInfo{
 		Namespace: pod.Namespace,
 		Pod:       pod.Name,
@@ -229,8 +231,6 @@ func MutatePod(pod *corev1.Pod, cfg *Config) ([]PatchOperation, *AuditInfo, erro
 		return nil, ai, fmt.Errorf("%w: invalid %s: %w", ErrValidation, annotationMount, err)
 	}
 
-	// Determine the group that will own the shared tmpfs volume.
-	// If the pod already specifies fsGroup, respect it; otherwise inject one.
 	fsGroup := cfg.FSGroup
 	if pod.Spec.SecurityContext != nil && pod.Spec.SecurityContext.FSGroup != nil {
 		fsGroup = *pod.Spec.SecurityContext.FSGroup
@@ -239,112 +239,86 @@ func MutatePod(pod *corev1.Pod, cfg *Config) ([]PatchOperation, *AuditInfo, erro
 	volName := "chur-secrets"
 	patches := []PatchOperation{}
 
-	// Ensure the pod-level securityContext has an fsGroup so that all
-	// containers share a supplementary group for the tmpfs volume.
+	patches = append(patches, patchSecurityContext(pod, fsGroup)...)
+	patches = append(patches, patchVolumes(pod, cfg, providerName, volName)...)
+
+	initEnv, err := buildInitEnv(cfg, providerName, secretRef, secretKey, mountPath, pod)
+	if err != nil {
+		return nil, ai, err
+	}
+
+	initContainer := buildInitContainer(cfg, initEnv, volName, mountPath, providerName, fsGroup)
+	if !initContainerExists(pod.Spec.InitContainers, initContainer.Name) {
+		if len(pod.Spec.InitContainers) == 0 {
+			patches = append(patches, PatchOperation{
+				Op:    opAdd,
+				Path:  "/spec/initContainers",
+				Value: []corev1.Container{initContainer},
+			})
+		} else {
+			patches = append(patches, PatchOperation{
+				Op:    opAdd,
+				Path:  "/spec/initContainers/-",
+				Value: initContainer,
+			})
+		}
+	}
+
+	patches = append(patches, mountToAppContainers(pod, volName, mountPath)...)
+
+	return patches, ai, nil
+}
+
+func patchSecurityContext(pod *corev1.Pod, fsGroup int64) []PatchOperation {
 	if pod.Spec.SecurityContext == nil {
-		patches = append(patches, PatchOperation{
+		return []PatchOperation{{
 			Op:   opAdd,
 			Path: "/spec/securityContext",
 			Value: &corev1.PodSecurityContext{
 				FSGroup: ptr.To(fsGroup),
 			},
-		})
-	} else if pod.Spec.SecurityContext.FSGroup == nil {
-		patches = append(patches, PatchOperation{
+		}}
+	}
+	if pod.Spec.SecurityContext.FSGroup == nil {
+		return []PatchOperation{{
 			Op:    opAdd,
 			Path:  "/spec/securityContext/fsGroup",
 			Value: fsGroup,
-		})
+		}}
 	}
+	return nil
+}
 
-	// Add the tmpfs volume if not already present (idempotent).
+func patchVolumes(pod *corev1.Pod, cfg *Config, providerName, volName string) []PatchOperation {
+	var patches []PatchOperation
+
 	if !volumeExists(pod.Spec.Volumes, volName) {
+		v := corev1.Volume{
+			Name: volName,
+			VolumeSource: corev1.VolumeSource{
+				EmptyDir: &corev1.EmptyDirVolumeSource{
+					Medium:    corev1.StorageMediumMemory,
+					SizeLimit: &cfg.VolumeSizeLimit,
+				},
+			},
+		}
 		if len(pod.Spec.Volumes) == 0 {
 			patches = append(patches, PatchOperation{
-				Op:   opAdd,
-				Path: "/spec/volumes",
-				Value: []corev1.Volume{{
-					Name: volName,
-					VolumeSource: corev1.VolumeSource{
-						EmptyDir: &corev1.EmptyDirVolumeSource{
-							Medium:    corev1.StorageMediumMemory,
-							SizeLimit: &cfg.VolumeSizeLimit,
-						},
-					},
-				}},
+				Op: opAdd, Path: "/spec/volumes", Value: []corev1.Volume{v},
 			})
 		} else {
 			patches = append(patches, PatchOperation{
-				Op:   opAdd,
-				Path: "/spec/volumes/-",
-				Value: corev1.Volume{
-					Name: volName,
-					VolumeSource: corev1.VolumeSource{
-						EmptyDir: &corev1.EmptyDirVolumeSource{
-							Medium:    corev1.StorageMediumMemory,
-							SizeLimit: &cfg.VolumeSizeLimit,
-						},
-					},
-				},
+				Op: opAdd, Path: "/spec/volumes/-", Value: v,
 			})
 		}
 	}
 
-	initEnv := []corev1.EnvVar{
-		{Name: "CHUR_PROVIDER", Value: providerName},
-		{Name: "CHUR_SECRET_REF", Value: secretRef},
-		{Name: "CHUR_MOUNT_PATH", Value: mountPath},
-		{Name: "CHUR_MAX_SECRET_SIZE", Value: cfg.MaxSecretSize},
-		{Name: "CHUR_LOCAL_BASE_PATH", Value: cfg.LocalBasePath},
-	}
-	if secretKey != "" {
-		initEnv = append(initEnv, corev1.EnvVar{Name: "CHUR_SECRET_KEY", Value: secretKey})
-	}
-
-	if providerName == providerKeeper {
-		if cfg.KeeperServiceName != "" {
-			host := cfg.KeeperServiceName + "." + cfg.KeeperServiceNamespace + ".svc"
-			u := url.URL{
-				Scheme: "https",
-				Host:   net.JoinHostPort(host, cfg.KeeperServicePort),
-			}
-			initEnv = append(initEnv, corev1.EnvVar{Name: "CHUR_KEEPER_URL", Value: u.String()})
-		}
-		if cfg.KeeperTLSCertPath != "" {
-			initEnv = append(initEnv, corev1.EnvVar{Name: "CHUR_KEEPER_TLS_CERT_PATH", Value: cfg.KeeperTLSCertPath})
-		}
-		if cfg.KeeperTLSKeyPath != "" {
-			initEnv = append(initEnv, corev1.EnvVar{Name: "CHUR_KEEPER_TLS_KEY_PATH", Value: cfg.KeeperTLSKeyPath})
-		}
-		if cfg.KeeperServerCA != "" {
-			initEnv = append(initEnv, corev1.EnvVar{Name: "CHUR_KEEPER_SERVER_CA", Value: cfg.KeeperServerCA})
-		}
-		if cfg.KeeperClientMaxSecretSize != "" {
-			initEnv = append(initEnv, corev1.EnvVar{Name: "CHUR_KEEPER_CLIENT_MAX_SECRET_SIZE", Value: cfg.KeeperClientMaxSecretSize})
-		}
-		if pod.Annotations[annotationKeeperSkipVerify] == "1" || pod.Annotations[annotationKeeperSkipVerify] == "true" {
-			if !cfg.AllowKeeperSkipVerify {
-				return nil, ai, fmt.Errorf("%w: %s is set but webhook is not configured to allow it", ErrValidation, annotationKeeperSkipVerify)
-			}
-			initEnv = append(initEnv, corev1.EnvVar{Name: "CHUR_KEEPER_INSECURE_SKIP_VERIFY", Value: "1"})
-		}
-	}
-
-	extraEnv, err := parseProviderEnv(pod.Annotations[annotationProviderEnv])
-	if err != nil {
-		return nil, ai, err
-	}
-	initEnv = append(initEnv, extraEnv...)
-
-	// The local provider reads files from the node filesystem. Mount the base
-	// directory as a read-only hostPath volume into the init container only.
-	localVolName := "chur-local-base"
-	if providerName == providerLocal && !volumeExists(pod.Spec.Volumes, localVolName) {
+	if providerName == providerLocal && !volumeExists(pod.Spec.Volumes, volNameLocal) {
 		patches = append(patches, PatchOperation{
 			Op:   opAdd,
 			Path: "/spec/volumes/-",
 			Value: corev1.Volume{
-				Name: localVolName,
+				Name: volNameLocal,
 				VolumeSource: corev1.VolumeSource{
 					HostPath: &corev1.HostPathVolumeSource{
 						Path: cfg.LocalBasePath,
@@ -355,15 +329,89 @@ func MutatePod(pod *corev1.Pod, cfg *Config) ([]PatchOperation, *AuditInfo, erro
 		})
 	}
 
-	// Add the chur-init init container if not already present (idempotent).
-	const initContainerName = "chur-init"
+	if providerName == providerKeeper && cfg.KeeperClientCertSecretName != "" {
+		if !volumeExists(pod.Spec.Volumes, volNameKeeper) {
+			v := corev1.Volume{
+				Name: volNameKeeper,
+				VolumeSource: corev1.VolumeSource{
+					Secret: &corev1.SecretVolumeSource{
+						SecretName:  cfg.KeeperClientCertSecretName,
+						DefaultMode: ptr.To[int32](0444),
+					},
+				},
+			}
+			if len(pod.Spec.Volumes) == 0 {
+				patches = append(patches, PatchOperation{
+					Op: opAdd, Path: "/spec/volumes", Value: []corev1.Volume{v},
+				})
+			} else {
+				patches = append(patches, PatchOperation{
+					Op: opAdd, Path: "/spec/volumes/-", Value: v,
+				})
+			}
+		}
+	}
 
+	return patches
+}
+
+func buildInitEnv(cfg *Config, providerName, secretRef, secretKey, mountPath string, pod *corev1.Pod) ([]corev1.EnvVar, error) {
+	env := []corev1.EnvVar{
+		{Name: "CHUR_PROVIDER", Value: providerName},
+		{Name: "CHUR_SECRET_REF", Value: secretRef},
+		{Name: "CHUR_MOUNT_PATH", Value: mountPath},
+		{Name: "CHUR_MAX_SECRET_SIZE", Value: cfg.MaxSecretSize},
+		{Name: "CHUR_LOCAL_BASE_PATH", Value: cfg.LocalBasePath},
+	}
+	if secretKey != "" {
+		env = append(env, corev1.EnvVar{Name: "CHUR_SECRET_KEY", Value: secretKey})
+	}
+
+	if providerName == providerKeeper {
+		if cfg.KeeperServiceName != "" {
+			host := cfg.KeeperServiceName + "." + cfg.KeeperServiceNamespace + ".svc"
+			u := url.URL{
+				Scheme: "https",
+				Host:   net.JoinHostPort(host, cfg.KeeperServicePort),
+			}
+			env = append(env, corev1.EnvVar{Name: "CHUR_KEEPER_URL", Value: u.String()})
+		}
+		if cfg.KeeperTLSCertPath != "" {
+			env = append(env, corev1.EnvVar{Name: "CHUR_KEEPER_TLS_CERT_PATH", Value: cfg.KeeperTLSCertPath})
+		}
+		if cfg.KeeperTLSKeyPath != "" {
+			env = append(env, corev1.EnvVar{Name: "CHUR_KEEPER_TLS_KEY_PATH", Value: cfg.KeeperTLSKeyPath})
+		}
+		if cfg.KeeperServerCA != "" {
+			env = append(env, corev1.EnvVar{Name: "CHUR_KEEPER_SERVER_CA", Value: cfg.KeeperServerCA})
+		}
+		if cfg.KeeperClientMaxSecretSize != "" {
+			env = append(env, corev1.EnvVar{Name: "CHUR_KEEPER_CLIENT_MAX_SECRET_SIZE", Value: cfg.KeeperClientMaxSecretSize})
+		}
+		if pod.Annotations[annotationKeeperSkipVerify] == "1" || pod.Annotations[annotationKeeperSkipVerify] == "true" {
+			if !cfg.AllowKeeperSkipVerify {
+				return nil, fmt.Errorf("%w: %s is set but webhook is not configured to allow it", ErrValidation, annotationKeeperSkipVerify)
+			}
+			env = append(env, corev1.EnvVar{Name: "CHUR_KEEPER_INSECURE_SKIP_VERIFY", Value: "1"})
+		}
+	}
+
+	extraEnv, err := parseProviderEnv(pod.Annotations[annotationProviderEnv])
+	if err != nil {
+		return nil, err
+	}
+	env = append(env, extraEnv...)
+
+	return env, nil
+}
+
+func buildInitContainer(cfg *Config, initEnv []corev1.EnvVar, volName, mountPath, providerName string, fsGroup int64) corev1.Container {
 	runAsGroup := cfg.RunAsGroup
 	if runAsGroup == nil {
 		runAsGroup = ptr.To(fsGroup)
 	}
-	initContainer := corev1.Container{
-		Name:            initContainerName,
+	c := corev1.Container{
+		Name:            "chur-init",
 		Image:           cfg.InitImage,
 		ImagePullPolicy: cfg.InitImagePullPolicy,
 		Command:         []string{"/chur-init"},
@@ -385,47 +433,16 @@ func MutatePod(pod *corev1.Pod, cfg *Config) ([]PatchOperation, *AuditInfo, erro
 			{Name: volName, MountPath: mountPath},
 		},
 	}
+
 	if providerName == providerLocal {
-		initContainer.VolumeMounts = append(initContainer.VolumeMounts, corev1.VolumeMount{
-			Name:      localVolName,
+		c.VolumeMounts = append(c.VolumeMounts, corev1.VolumeMount{
+			Name:      volNameLocal,
 			MountPath: cfg.LocalBasePath,
 			ReadOnly:  true,
 		})
 	}
+
 	if providerName == providerKeeper && cfg.KeeperClientCertSecretName != "" {
-		clientVolName := "chur-keeper-client-tls"
-		// cert and key must be in the same secret directory (Helm mounts the secret as a whole).
-		if !volumeExists(pod.Spec.Volumes, clientVolName) {
-			if len(pod.Spec.Volumes) == 0 {
-				patches = append(patches, PatchOperation{
-					Op:   opAdd,
-					Path: "/spec/volumes",
-					Value: []corev1.Volume{{
-						Name: clientVolName,
-						VolumeSource: corev1.VolumeSource{
-							Secret: &corev1.SecretVolumeSource{
-								SecretName:  cfg.KeeperClientCertSecretName,
-								DefaultMode: ptr.To[int32](0444),
-							},
-						},
-					}},
-				})
-			} else {
-				patches = append(patches, PatchOperation{
-					Op:   opAdd,
-					Path: "/spec/volumes/-",
-					Value: corev1.Volume{
-						Name: clientVolName,
-						VolumeSource: corev1.VolumeSource{
-							Secret: &corev1.SecretVolumeSource{
-								SecretName:  cfg.KeeperClientCertSecretName,
-								DefaultMode: ptr.To[int32](0444),
-							},
-						},
-					},
-				})
-			}
-		}
 		mountDir := cfg.KeeperTLSCertPath
 		if mountDir == "" {
 			mountDir = "/etc/chur-keeper/client-tls"
@@ -433,31 +450,18 @@ func MutatePod(pod *corev1.Pod, cfg *Config) ([]PatchOperation, *AuditInfo, erro
 		if idx := strings.LastIndex(mountDir, "/"); idx >= 0 {
 			mountDir = mountDir[:idx]
 		}
-		if !volumeMountExists(initContainer.VolumeMounts, clientVolName, mountDir) {
-			initContainer.VolumeMounts = append(initContainer.VolumeMounts, corev1.VolumeMount{
-				Name:      clientVolName,
-				MountPath: mountDir,
-				ReadOnly:  true,
-			})
-		}
-	}
-	if !initContainerExists(pod.Spec.InitContainers, initContainerName) {
-		if len(pod.Spec.InitContainers) == 0 {
-			patches = append(patches, PatchOperation{
-				Op:    opAdd,
-				Path:  "/spec/initContainers",
-				Value: []corev1.Container{initContainer},
-			})
-		} else {
-			patches = append(patches, PatchOperation{
-				Op:    opAdd,
-				Path:  "/spec/initContainers/-",
-				Value: initContainer,
-			})
-		}
+		c.VolumeMounts = append(c.VolumeMounts, corev1.VolumeMount{
+			Name:      volNameKeeper,
+			MountPath: mountDir,
+			ReadOnly:  true,
+		})
 	}
 
-	// Mount the tmpfs volume to every app container if not already mounted (idempotent).
+	return c
+}
+
+func mountToAppContainers(pod *corev1.Pod, volName, mountPath string) []PatchOperation {
+	var patches []PatchOperation
 	for i := range pod.Spec.Containers {
 		if volumeMountExists(pod.Spec.Containers[i].VolumeMounts, volName, mountPath) {
 			continue
@@ -484,8 +488,7 @@ func MutatePod(pod *corev1.Pod, cfg *Config) ([]PatchOperation, *AuditInfo, erro
 			})
 		}
 	}
-
-	return patches, ai, nil
+	return patches
 }
 
 func volumeExists(volumes []corev1.Volume, name string) bool {

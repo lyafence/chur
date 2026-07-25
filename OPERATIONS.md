@@ -13,7 +13,7 @@ See [README.md](README.md) for the architecture diagram and component descriptio
 | chur-keeper | `/healthz` | 9444 | Liveness probe | `internal/keeper/server.go` |
 | chur-keeper | `/metrics` | 9444 | Prometheus metrics | `internal/metrics/metrics.go` |
 
-Both endpoints return HTTP 200 with `{"status":"ok"}` when healthy.
+Health endpoints (`/healthz`, `/readyz`) return HTTP 200 with `{"status":"ok"}` when healthy. `/metrics` returns Prometheus text format.
 
 ### TLS modes
 

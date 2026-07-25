@@ -41,7 +41,7 @@ func TestLocalProvider_GetSecret_PathTraversal(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "secret.txt"), []byte("hello"), 0600); err != nil {
 		t.Fatalf("setup: %v", err)
 	}
-	// File outside basePath should not be reachable.
+	// Ref with traversal is rejected by ValidateSecretRef before OS open.
 	if err := os.WriteFile(filepath.Join(dir, "..", "outside.txt"), []byte("leak"), 0600); err != nil {
 		t.Fatalf("setup: %v", err)
 	}

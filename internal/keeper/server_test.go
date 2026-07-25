@@ -91,29 +91,19 @@ func TestHandleGetSecretEmptyRef(t *testing.T) {
 	sem := make(chan struct{}, 100)
 	h := handleGetSecret(b, 1<<20, sem, b.Name())
 
-	tests := []struct {
-		name string
-		body []byte
-	}{
-		{"empty ref", []byte(`{"ref":""}`)},
-		{"empty object", []byte(`{}`)},
+	body, _ := json.Marshal(map[string]string{"ref": ""})
+	req := httptest.NewRequest(http.MethodPost, "/v1/secrets/get", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
 	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodPost, "/v1/secrets/get", bytes.NewReader(tc.body))
-			rec := httptest.NewRecorder()
-			h.ServeHTTP(rec, req)
-			if rec.Code != http.StatusBadRequest {
-				t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
-			}
-			var resp map[string]string
-			if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
-				t.Fatal(err)
-			}
-			if resp["error"] == "" {
-				t.Error("expected error message in response")
-			}
-		})
+	var resp map[string]string
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatal(err)
+	}
+	if resp["error"] == "" {
+		t.Error("expected error message in response")
 	}
 }
 

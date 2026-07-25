@@ -3,11 +3,11 @@ package local
 import (
 	"context"
 	"fmt"
-	"io"
 	"os"
 
 	"github.com/lyafence/chur/internal/bytesize"
 	"github.com/lyafence/chur/internal/provider"
+	"github.com/lyafence/chur/internal/readutil"
 	"github.com/lyafence/chur/internal/validate"
 )
 
@@ -34,31 +34,7 @@ func (p *LocalProvider) GetSecret(ctx context.Context, ref string) ([]byte, erro
 		return nil, fmt.Errorf("local: open %s: %w", ref, err)
 	}
 
-	type readResult struct {
-		data []byte
-		err  error
-	}
-	ch := make(chan readResult, 1)
-	go func() {
-		data, err := io.ReadAll(io.LimitReader(f, p.maxSize+1))
-		ch <- readResult{data, err}
-	}()
-
-	select {
-	case <-ctx.Done():
-		f.Close()
-		<-ch
-		return nil, fmt.Errorf("local: %w", ctx.Err())
-	case r := <-ch:
-		f.Close()
-		if r.err != nil {
-			return nil, fmt.Errorf("local: read %s: %w", ref, r.err)
-		}
-		if int64(len(r.data)) > p.maxSize {
-			return nil, fmt.Errorf("local: secret exceeds max size")
-		}
-		return r.data, nil
-	}
+	return readutil.ReadWithContext(ctx, f, p.maxSize, "local", ref)
 }
 
 func init() {

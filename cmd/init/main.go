@@ -41,11 +41,7 @@ func main() {
 		slog.ErrorContext(ctx, "CHUR_SECRET_REF is required")
 		os.Exit(1)
 	}
-	validator := validate.ValidateSecretRef
-	if providerName == "keeper" {
-		validator = validate.ValidateKeeperRef
-	}
-	if err := validator(secretRef); err != nil {
+	if err := resolveValidator(providerName)(secretRef); err != nil {
 		slog.ErrorContext(ctx, "invalid CHUR_SECRET_REF", "error", err)
 		os.Exit(1)
 	}
@@ -163,4 +159,14 @@ func backoffFetch(ctx context.Context, p provider.SecretProvider, secretRef stri
 	}
 
 	return nil, lastErr
+}
+
+// resolveValidator returns the appropriate ref validation function for the
+// given provider. Keeper refs allow hierarchical names with '/'; other
+// providers reject path separators to prevent filesystem traversal.
+func resolveValidator(providerName string) func(string) error {
+	if providerName == "keeper" {
+		return validate.ValidateKeeperRef
+	}
+	return validate.ValidateSecretRef
 }

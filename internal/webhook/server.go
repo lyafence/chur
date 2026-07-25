@@ -282,8 +282,6 @@ func (s *Server) mutateWithMetrics(ctx context.Context, review *admissionv1.Admi
 // HealthHandler returns an HTTP handler with /healthz, /readyz, and /metrics endpoints.
 func HealthHandler() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/healthz", health.HealthzHandler("webhook").ServeHTTP)
-	mux.HandleFunc("/readyz", health.HealthzHandler("webhook").ServeHTTP)
-	mux.Handle("/metrics", metrics.Handler())
+	health.RegisterHealthEndpoints(mux, "webhook", metrics.Handler())
 	return mux
 }

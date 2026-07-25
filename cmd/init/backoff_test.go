@@ -178,6 +178,38 @@ func TestBackoffFetch_ContextTimeout(t *testing.T) {
 	}
 }
 
+func TestResolveValidator_KeeperAcceptsSlash(t *testing.T) {
+	t.Parallel()
+	if err := resolveValidator("keeper")("prod/db/password"); err != nil {
+		t.Errorf("resolveValidator('keeper') rejected valid keeper ref: %v", err)
+	}
+}
+
+func TestResolveValidator_KeeperRejectsDotDot(t *testing.T) {
+	t.Parallel()
+	if err := resolveValidator("keeper")("../../etc/shadow"); err == nil {
+		t.Error("resolveValidator('keeper') should reject path traversal")
+	}
+}
+
+func TestResolveValidator_NonKeeperRejectsSlash(t *testing.T) {
+	t.Parallel()
+	for _, p := range []string{"env", "local", "k8s"} {
+		if err := resolveValidator(p)("prod/db/password"); err == nil {
+			t.Errorf("resolveValidator(%q) should reject '/' in ref", p)
+		}
+	}
+}
+
+func TestResolveValidator_NonKeeperAcceptsFlat(t *testing.T) {
+	t.Parallel()
+	for _, p := range []string{"env", "local", "k8s", "keeper"} {
+		if err := resolveValidator(p)("my-secret"); err != nil {
+			t.Errorf("resolveValidator(%q) rejected flat ref: %v", p, err)
+		}
+	}
+}
+
 type slowProvider struct {
 	delay time.Duration
 }

@@ -118,7 +118,8 @@ func init() {
 		if url == "" {
 			url = "https://chur-keeper.chur-system.svc:9443"
 		}
-		skipVerify := os.Getenv("CHUR_KEEPER_INSECURE_SKIP_VERIFY") == "1" || os.Getenv("CHUR_KEEPER_INSECURE_SKIP_VERIFY") == "true"
+		skipRaw := os.Getenv("CHUR_KEEPER_INSECURE_SKIP_VERIFY")
+		skipVerify := skipRaw == "1" || skipRaw == "true"
 		certFile := os.Getenv("CHUR_KEEPER_TLS_CERT_PATH")
 		keyFile := os.Getenv("CHUR_KEEPER_TLS_KEY_PATH")
 		serverCAFile := os.Getenv("CHUR_KEEPER_SERVER_CA")

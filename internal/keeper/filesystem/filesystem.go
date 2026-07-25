@@ -3,9 +3,9 @@ package filesystem
 import (
 	"context"
 	"fmt"
-	"io"
 	"os"
 
+	"github.com/lyafence/chur/internal/readutil"
 	"github.com/lyafence/chur/internal/validate"
 )
 
@@ -30,31 +30,7 @@ func (b *FSBackend) GetSecret(ctx context.Context, ref string) ([]byte, error) {
 		return nil, fmt.Errorf("filesystem: open %q: %w", ref, err)
 	}
 
-	type readResult struct {
-		data []byte
-		err  error
-	}
-	ch := make(chan readResult, 1)
-	go func() {
-		data, err := io.ReadAll(io.LimitReader(f, b.maxSize+1))
-		ch <- readResult{data, err}
-	}()
-
-	select {
-	case <-ctx.Done():
-		f.Close()
-		<-ch
-		return nil, ctx.Err()
-	case r := <-ch:
-		f.Close()
-		if r.err != nil {
-			return nil, fmt.Errorf("filesystem: read %q: %w", ref, r.err)
-		}
-		if int64(len(r.data)) > b.maxSize {
-			return nil, fmt.Errorf("filesystem: secret exceeds max size")
-		}
-		return r.data, nil
-	}
+	return readutil.ReadWithContext(ctx, f, b.maxSize, "filesystem", ref)
 }
 
 func NewWithMaxSize(root string, maxSize int64) (*FSBackend, error) {

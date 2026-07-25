@@ -20,6 +20,8 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/utils/ptr"
 
+	"github.com/lyafence/chur/internal/health"
+	"github.com/lyafence/chur/internal/metrics"
 	"github.com/lyafence/chur/internal/tls"
 	"github.com/lyafence/chur/internal/validate"
 	"github.com/lyafence/chur/internal/webhook"
@@ -229,9 +231,11 @@ func main() {
 		MaxHeaderBytes:    1 << 20, // 1 MiB
 	}
 
+	healthMux := http.NewServeMux()
+	health.RegisterHealthEndpoints(healthMux, "webhook", metrics.Handler())
 	healthSrv := &http.Server{
 		Addr:              healthAddr,
-		Handler:           webhook.HealthHandler(),
+		Handler:           healthMux,
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       5 * time.Second,
 		WriteTimeout:      5 * time.Second,

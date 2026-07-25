@@ -17,8 +17,8 @@ func ValidateSecretRef(ref string) error {
 	if len(ref) > 255 {
 		return fmt.Errorf("secret-ref exceeds 255 characters")
 	}
-	if ref == "." || ref == ".." {
-		return fmt.Errorf("secret-ref must not be '.' or '..'")
+	if ref == "." {
+		return fmt.Errorf("secret-ref must not be '.'")
 	}
 	if strings.Contains(ref, "..") {
 		return fmt.Errorf("secret-ref must not contain '..'")
