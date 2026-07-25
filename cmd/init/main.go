@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"log/slog"
-	"math/rand"
+	"math/rand/v2"
 	"os"
 	"path/filepath"
 	"time"
@@ -121,7 +121,7 @@ func initProvider(ctx context.Context, factory provider.Factory) (provider.Secre
 	var lastErr error
 	for attempt := 0; attempt < maxRetries; attempt++ {
 		if attempt > 0 {
-			delay := time.Duration(1<<(attempt-1))*time.Second + time.Duration(rand.Intn(500))*time.Millisecond
+			delay := time.Duration(1<<(attempt-1))*time.Second + time.Duration(rand.IntN(500))*time.Millisecond
 			select {
 			case <-ctx.Done():
 				return nil, ctx.Err()
@@ -144,7 +144,7 @@ func backoffFetch(ctx context.Context, p provider.SecretProvider, secretRef stri
 	var lastErr error
 	for attempt := 0; attempt < maxRetries; attempt++ {
 		if attempt > 0 {
-			delay := time.Duration(1<<(attempt-1))*time.Second + time.Duration(rand.Intn(500))*time.Millisecond
+			delay := time.Duration(1<<(attempt-1))*time.Second + time.Duration(rand.IntN(500))*time.Millisecond
 			slog.WarnContext(ctx, "retrying secret fetch", "attempt", attempt+1, "max", maxRetries, "delay", delay.String(), "error", lastErr)
 			select {
 			case <-ctx.Done():

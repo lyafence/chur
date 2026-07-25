@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/lyafence/chur/internal/bytesize"
+	"github.com/lyafence/chur/internal/provider"
+	"github.com/lyafence/chur/internal/validate"
 )
 
 type TLSMode string
@@ -24,7 +26,7 @@ type Config struct {
 	TLSKeyFile    string
 	ClientCAFile  string
 	BackendType   string
-	Backend       Backend
+	Backend       provider.SecretProvider
 	FSRoot        string
 	MaxSecretSize int64
 	MaxConcurrent int
@@ -81,6 +83,9 @@ func ConfigFromEnv() (*Config, error) {
 		cfg.BackendType = "filesystem"
 	}
 	if v := os.Getenv("CHUR_KEEPER_BACKEND_FS_ROOT"); v != "" {
+		if err := validate.ValidateLocalBasePath(v); err != nil {
+			return nil, fmt.Errorf("CHUR_KEEPER_BACKEND_FS_ROOT: %w", err)
+		}
 		cfg.FSRoot = v
 	}
 	if v := os.Getenv("CHUR_KEEPER_MAX_SECRET_SIZE"); v != "" {

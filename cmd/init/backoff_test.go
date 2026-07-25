@@ -173,6 +173,9 @@ func TestBackoffFetch_ContextTimeout(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error due to context timeout")
 	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expected context.DeadlineExceeded, got %v", err)
+	}
 }
 
 type slowProvider struct {

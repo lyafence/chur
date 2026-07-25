@@ -10,6 +10,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"errors"
 	"math/big"
 	"net"
 	"net/http"
@@ -127,6 +128,9 @@ func TestGetSecretContextTimeout(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected timeout error")
 	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expected context.DeadlineExceeded, got %v", err)
+	}
 }
 
 func TestGetSecretResponseExceedsMaxSize(t *testing.T) {
@@ -144,6 +148,33 @@ func TestGetSecretResponseExceedsMaxSize(t *testing.T) {
 	_, err = p.GetSecret(context.Background(), "ref")
 	if err == nil || !strings.Contains(err.Error(), "exceeds max size") {
 		t.Fatalf("expected max size error, got %v", err)
+	}
+}
+
+func TestNewProviderRejectsSkipVerifyWithCA(t *testing.T) {
+	t.Parallel()
+	_, err := NewProvider("https://example.com", true, "", "", "/path/to/ca")
+	if err == nil {
+		t.Fatal("expected error for skipVerify=true with CA file set")
+	}
+}
+
+func TestNewProviderAcceptsSkipVerifyWithoutCA(t *testing.T) {
+	t.Parallel()
+	p, err := NewProvider("https://example.com", true, "", "", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if p == nil {
+		t.Fatal("expected non-nil provider")
+	}
+}
+
+func TestNewProviderRejectsMissingCAFile(t *testing.T) {
+	t.Parallel()
+	_, err := NewProvider("https://example.com", false, "", "", "/path/to/ca")
+	if err == nil {
+		t.Fatal("expected error for nonexistent CA file")
 	}
 }
 

@@ -241,7 +241,10 @@ networkPolicy:
   # the API server source CIDR varies per cluster and may require custom rules.
   #
   # Webhook: ingress from kube-system (API server).
+  #   Health/metrics port (:8080) is included for Prometheus scraping.
+  #   Kubelet probes typically bypass NetworkPolicy (CNI-dependent).
   # Keeper: ingress from namespaces listed in rbac.namespaces.
   #   If rbac.namespaces is empty, only the release namespace is allowed.
   #   To allow the keeper provider from app namespaces, add them to rbac.namespaces.
+  #   Health/metrics port (:9444) is included for Prometheus scraping.
   enabled: false

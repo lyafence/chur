@@ -250,6 +250,6 @@ The following are intentionally out of scope:
 
 chur emits structured JSON logs from both `chur-webhook` and `chur-init`. These
 logs are the basic audit trail: they record when a secret is injected, by which
-provider, and the duration. Secret references and keys are excluded from logs.
+provider, and the duration. Secret values and secret keys are never logged. Secret references may appear in logs for debuggability (see T8).
 Advanced audit capabilities (for example, streaming to a SIEM or Kubernetes
 Audit Events integration) are not implemented (as of this writing).

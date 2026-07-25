@@ -16,6 +16,7 @@ import (
 
 	"github.com/lyafence/chur/internal/health"
 	"github.com/lyafence/chur/internal/metrics"
+	"github.com/lyafence/chur/internal/provider"
 	churtls "github.com/lyafence/chur/internal/tls"
 	"github.com/lyafence/chur/internal/validate"
 )
@@ -117,7 +118,7 @@ func Serve(ctx context.Context, cfg *Config, tlsCfg *tls.Config, listener net.Li
 	return shutdownErr
 }
 
-func handleGetSecret(b Backend, maxSize int64, sem chan struct{}, backendName string) http.HandlerFunc {
+func handleGetSecret(b provider.SecretProvider, maxSize int64, sem chan struct{}, backendName string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 

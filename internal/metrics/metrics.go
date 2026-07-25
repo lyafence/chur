@@ -1,9 +1,23 @@
 package metrics
 
 import (
+	"net/http"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
+
+// Registry is the custom prometheus registry for chur metrics.
+// A custom registry is used instead of the default registry to isolate
+// chur metrics from Go runtime metrics and to enable unit testing.
+var Registry = prometheus.NewRegistry()
+
+// Handler returns an http.Handler that serves Prometheus metrics from the
+// custom chur registry on the /metrics endpoint.
+func Handler() http.Handler {
+	return promhttp.HandlerFor(Registry, promhttp.HandlerOpts{})
+}
 
 // Webhook metrics.
 var (

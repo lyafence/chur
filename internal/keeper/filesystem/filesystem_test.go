@@ -3,6 +3,7 @@ package filesystem
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -112,6 +113,25 @@ func TestGetSecretExceedsMaxSize(t *testing.T) {
 	_, err := b.GetSecret(context.Background(), "big")
 	if err == nil || !strings.Contains(err.Error(), "exceeds max size") {
 		t.Fatal("expected max size error")
+	}
+}
+
+func TestFSBackendCancelContext(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "secret.txt"), []byte("hello"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	b := mustCreate(t, dir, 1<<20)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := b.GetSecret(ctx, "secret.txt")
+	if err == nil {
+		t.Fatal("expected error for cancelled context")
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context.Canceled, got %v", err)
 	}
 }
 

@@ -3,6 +3,7 @@ package validate
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 )
 
@@ -111,7 +112,8 @@ func ValidateLocalBasePath(path string) error {
 	if !strings.HasPrefix(path, "/") {
 		return fmt.Errorf("local base path must be absolute")
 	}
-	if path == "/" {
+	cleaned := filepath.Clean(path)
+	if cleaned == "/" || cleaned == "." {
 		return fmt.Errorf("local base path must not be root")
 	}
 	if strings.Contains(path, "..") {

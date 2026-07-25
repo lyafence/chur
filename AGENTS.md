@@ -38,7 +38,7 @@
 | `internal/providers/k8s/` | Kubernetes Secret provider |
 | `internal/metrics/` | Prometheus metric declarations and custom registry |
 | `internal/validate/` | Input validation (filename-safe refs, secret keys) |
-| `internal/keeper/` | Keeper server, config, backend interface |
+| `internal/keeper/` | Keeper server, config, backend dispatch |
 | `internal/keeper/filesystem/` | Filesystem backend for chur-keeper |
 | `internal/keeper/exec/` | Exec backend for chur-keeper |
 | `internal/keeper/http/` | HTTP backend for chur-keeper |
@@ -164,7 +164,7 @@ long-running background services unless they solve a demonstrated user problem.
 
 **chur-keeper (optional):**
 - Binary: `cmd/keeper/`, 9.6 MB. stdlib-only except prometheus client for `/metrics`.
-- Backends: `filesystem`, `http`, and `exec` via `Backend` interface.
+- Backends: `filesystem`, `http`, and `exec` via `provider.SecretProvider` interface.
 - Providers: `internal/providers/keeper/` — HTTP client with mTLS.
 - Helm chart: `keeper.enabled=false`, conditional env injection.
 - E2E: `TestE2E_KeeperProvider` in `test/e2e/`.

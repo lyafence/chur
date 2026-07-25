@@ -32,6 +32,9 @@ func NewProvider(rawURL string, skipVerify bool, clientCertFile, clientKeyFile, 
 	}
 
 	if skipVerify {
+		if serverCAFile != "" {
+			return nil, fmt.Errorf("keeper: CHUR_KEEPER_INSECURE_SKIP_VERIFY and CHUR_KEEPER_SERVER_CA are mutually exclusive")
+		}
 		transport.TLSClientConfig.InsecureSkipVerify = true
 	}
 
@@ -91,7 +94,10 @@ func (p *KeeperProvider) GetSecret(ctx context.Context, ref string) ([]byte, err
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+		body, readErr := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+		if readErr != nil {
+			slog.DebugContext(ctx, "keeper: error response read failed", "status", resp.Status, "error", readErr)
+		}
 		slog.DebugContext(ctx, "keeper: error response", "status", resp.Status, "body", string(body))
 		return nil, fmt.Errorf("keeper: %s", resp.Status)
 	}

@@ -123,6 +123,8 @@ func TestValidateLocalBasePath(t *testing.T) {
 		{"nested", "/var/lib/chur/secrets", false},
 		{"empty", "", true},
 		{"root", "/", true},
+		{"double-slash", "//", true},
+		{"dot-slash", "/.", true},
 		{"relative", "etc/chur", true},
 		{"dotdot", "/etc/../secrets", true},
 		{"space", "/path/with space", true},

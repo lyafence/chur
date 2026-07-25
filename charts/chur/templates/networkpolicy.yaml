@@ -17,6 +17,7 @@ spec:
               kubernetes.io/metadata.name: kube-system
       ports:
         - port: {{ .Values.webhook.listen | toString | splitList ":" | last | atoi | default 8443 }}
+        - port: {{ .Values.webhook.healthListen | toString | splitList ":" | last | atoi | default 8080 }}
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -39,6 +40,7 @@ spec:
               kubernetes.io/metadata.name: {{ $ns }}
       ports:
         - port: {{ $.Values.keeper.listen | toString | splitList ":" | last | atoi | default 9443 }}
+        - port: {{ $.Values.keeper.healthListen | toString | splitList ":" | last | atoi | default 9444 }}
     {{- end }}
     {{- else }}
     - from:
@@ -47,5 +49,6 @@ spec:
               kubernetes.io/metadata.name: {{ .Release.Namespace }}
       ports:
         - port: {{ .Values.keeper.listen | toString | splitList ":" | last | atoi | default 9443 }}
+        - port: {{ .Values.keeper.healthListen | toString | splitList ":" | last | atoi | default 9444 }}
     {{- end }}
 {{- end }}

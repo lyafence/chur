@@ -9,11 +9,29 @@ See [README.md](README.md) for the architecture diagram and component descriptio
 | Component | Endpoint | Port | Purpose | Verified |
 |-----------|----------|------|---------|----------|
 | chur-webhook | `/healthz`, `/readyz` | 8080 | Liveness and readiness probes | `cmd/webhook/main.go` |
-| chur-webhook | `/metrics` | 8080 | Prometheus metrics | `internal/metrics/handler.go` |
+| chur-webhook | `/metrics` | 8080 | Prometheus metrics | `internal/metrics/metrics.go` |
 | chur-keeper | `/healthz` | 9444 | Liveness probe | `internal/keeper/server.go` |
-| chur-keeper | `/metrics` | 9444 | Prometheus metrics | `internal/metrics/handler.go` |
+| chur-keeper | `/metrics` | 9444 | Prometheus metrics | `internal/metrics/metrics.go` |
 
 Both endpoints return HTTP 200 with `{"status":"ok"}` when healthy.
+
+### TLS modes
+
+- **Webhook mTLS:** `webhook.tlsMode=mtls` + `mtls.caBundle` (PEM CA cert).
+  Without caBundle the Helm chart will error out at install time.
+- **Keeper mTLS:** `keeper.tlsMode=mtls` + `keeper.mtls.enabled=true`
+  + client cert secret name. See `charts/chur/README.md` for details.
+
+### failurePolicy
+
+Default: `Fail`. When the webhook is unreachable, ALL Pod creation is blocked.
+During migration to chur, set `webhook.failurePolicy=Ignore` temporarily, then
+switch to `Fail` after verifying the webhook is stable.
+
+### Refs in logs
+
+Secret references may appear in init container and keeper logs for
+debuggability (see T8 in THREAT_MODEL.md). Secret values are never logged.
 
 ## Debugging
 

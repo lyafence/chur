@@ -18,7 +18,11 @@ var version = "dev"
 
 func main() {
 	ctx := context.Background()
-	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
+	logLevel := slog.LevelInfo
+	if v := os.Getenv("CHUR_KEEPER_LOG_LEVEL"); v == "debug" {
+		logLevel = slog.LevelDebug
+	}
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: logLevel})))
 
 	cfg, err := keeper.ConfigFromEnv()
 	if err != nil {

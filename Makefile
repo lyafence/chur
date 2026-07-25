@@ -1,5 +1,5 @@
 .PHONY: build build-webhook build-init build-keeper fmt lint test check vuln clean \
-        docker docker-webhook docker-init docker-keeper release e2e helm-package
+        docker docker-webhook docker-init docker-keeper release e2e e2e-build helm-package
 
 APP_NAME    ?= chur
 VERSION     ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -85,5 +85,7 @@ release: build
 helm-package:
 	helm package charts/chur/ --destination dist/ --version "$(VERSION:v%=%)" --app-version "$(VERSION:v%=%)"
 
-e2e: docker
+e2e-build: docker
+
+e2e: e2e-build
 	./hack/e2e.sh "$(VERSION)" "$(E2E_CLUSTER)" "$(E2E_SKIP_CLEANUP)"

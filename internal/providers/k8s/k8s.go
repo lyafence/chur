@@ -24,6 +24,9 @@ type K8sProvider struct {
 func (p *K8sProvider) Name() string { return "k8s" }
 
 func (p *K8sProvider) GetSecret(ctx context.Context, ref string) ([]byte, error) {
+	if err := validate.ValidateSecretRef(ref); err != nil {
+		return nil, fmt.Errorf("k8s: invalid ref: %w", err)
+	}
 	sec, err := p.client.CoreV1().Secrets(p.namespace).Get(ctx, ref, metav1.GetOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("k8s: get secret %s/%s: %w", p.namespace, ref, err)

@@ -16,15 +16,16 @@ Kubernetes Secrets are a great storage mechanism, but they are not always the
 best delivery mechanism — they end up in etcd, environment variables, disk
 files, crash dumps, and debug logs. chur changes how secrets reach your
 workload: it injects them directly into container memory (tmpfs) at Pod start
-and never touches disk or environment variables. It is the simplest secure way
-to deliver a secret into a Kubernetes workload — not another secrets manager.
+and never writes to application environment variables or persistent disk.
+A small admission webhook that delivers secrets into tmpfs — not another
+secrets manager.
 See [THREAT_MODEL.md](THREAT_MODEL.md) for the security model.
 
 ## Overview
 
 chur is a Kubernetes admission webhook that intercepts Pod creation and
-injects secrets directly into container memory (tmpfs), bypassing application
-environment variables and Kubernetes Secret volumes. Secrets are sourced from
+injects secrets directly into container memory (tmpfs), replacing environment
+variable injection and Secret volumes as the delivery mechanism. Secrets are sourced from
 environment variables, local files on the node, or Kubernetes Secrets via a
 pluggable provider architecture. Cloud secret stores (AWS, GCP, Azure, Vault)
 are covered by the optional `chur-keeper` gateway with its `exec` backend —
@@ -128,6 +129,23 @@ kubectl -n chur-system exec test-pod -- cat /secrets/my-secret
 The default TLS mode uses cert-manager. For development without cert-manager
 (`tls.provider=helmGenerated`) or other TLS options, see
 [`charts/chur/values.yaml`](charts/chur/values.yaml) and the
+[Helm chart README](charts/chur/README.md).
+
+## Production deployment
+
+Canonical production setup with chur-keeper, mTLS, and NetworkPolicy:
+
+```bash
+helm install chur ./charts/chur -n chur-system --create-namespace \
+  --set replicaCount=2 \
+  --set keeper.enabled=true \
+  --set keeper.tlsMode=mtls \
+  --set keeper.mtls.enabled=true \
+  --set networkPolicy.enabled=true \
+  --set tls.provider=certManager
+```
+
+For full mTLS setup — client CA, client certificate secret — see the
 [Helm chart README](charts/chur/README.md).
 
 ## Usage
@@ -255,6 +273,7 @@ init container configuration), see [`.env.example`](.env.example).
 | `CHUR_KEEPER_LISTEN` | `:9443` | keeper | HTTPS listen address |
 | `CHUR_KEEPER_HEALTH_LISTEN` | `:9444` | keeper | Health endpoint listen address |
 | `CHUR_KEEPER_TLS_MODE` | `self-signed` | keeper | TLS mode: `self-signed` or `mtls` |
+| `CHUR_KEEPER_LOG_LEVEL` | `info` | keeper | Log level: `info` or `debug` |
 | `CHUR_KEEPER_BACKEND` | `filesystem` | keeper | Backend type: `filesystem`, `http`, or `exec` |
 | `CHUR_KEEPER_MAX_SECRET_SIZE` | `1Mi` | keeper | Maximum response size |
 | `CHUR_KEEPER_EXEC_COMMAND` | — | keeper | Command to execute (exec backend) |
@@ -267,6 +286,9 @@ init container configuration), see [`.env.example`](.env.example).
 | `CHUR_KEEPER_TLS_CERT_PATH` | — | webhook | Client TLS cert path for chur-init (keeper mTLS, auto-injected) |
 | `CHUR_KEEPER_TLS_KEY_PATH` | — | webhook | Client TLS key path for chur-init (keeper mTLS, auto-injected) |
 | `CHUR_KEEPER_SERVER_CA` | — | webhook | Server CA path for verifying keeper (keeper mTLS, auto-injected) |
+| `CHUR_TLS_AUTO_GENERATE` | — | webhook | Auto-generate self-signed TLS cert (dev only) |
+| `CHUR_TLS_DNS_NAME` | `localhost` | webhook | DNS name for auto-generated cert |
+| `CHUR_KEEPER_CLIENT_MAX_SECRET_SIZE` | `1048576` | init | Max response size from keeper |
 | `CHUR_ALLOW_KEEPER_SKIP_VERIFY` | `false` | webhook | Allow `chur.io/keeper-skip-verify` annotation (dev only) |
 | `CHUR_KEEPER_CLIENT_CERT_SECRET_NAME` | — | webhook | Kubernetes Secret name with client cert for chur-init (auto-mounted) |
 

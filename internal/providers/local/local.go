@@ -67,6 +67,9 @@ func init() {
 		if basePath == "" {
 			basePath = "/etc/chur/secrets"
 		}
+		if err := validate.ValidateLocalBasePath(basePath); err != nil {
+			return nil, fmt.Errorf("local: %w", err)
+		}
 		maxSize := int64(1 << 20)
 		if v := os.Getenv("CHUR_MAX_SECRET_SIZE"); v != "" {
 			n, err := bytesize.Parse(v)

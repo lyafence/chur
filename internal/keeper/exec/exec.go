@@ -93,8 +93,12 @@ func (b *ExecBackend) GetSecret(ctx context.Context, ref string) ([]byte, error)
 	stdout.Close()
 
 	if n > b.maxStdout {
-		_ = cmd.Process.Kill()
-		_ = cmd.Wait()
+		if err := cmd.Process.Kill(); err != nil {
+			slog.DebugContext(ctx, "exec: kill on overflow", "error", err)
+		}
+		if err := cmd.Wait(); err != nil {
+			slog.DebugContext(ctx, "exec: wait on overflow", "error", err)
+		}
 		return nil, fmt.Errorf("exec: stdout exceeds max size (%d bytes)", b.maxStdout)
 	}
 

@@ -965,11 +965,53 @@ func TestParseProviderEnvReservedEnv(t *testing.T) {
 					},
 				},
 			}
-			if _, _, err := MutatePod(pod, cfg); err == nil {
-				t.Errorf("expected error for reserved key %q", reserved)
+			if _, _, err := MutatePod(pod, cfg); !errors.Is(err, ErrValidation) {
+				t.Errorf("expected ErrValidation for reserved key %q, got %v", reserved, err)
 			}
 		})
 	}
+
+	t.Run("valid extra env", func(t *testing.T) {
+		pod := &corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-valid",
+				Namespace: "default",
+				Annotations: map[string]string{
+					annotationProvider:    "keeper",
+					annotationSecret:      "ref",
+					annotationProviderEnv: `{"CHUR_MY_CUSTOM_VAR":"value"}`,
+				},
+			},
+		}
+		patches, _, err := MutatePod(pod, cfg)
+		if err != nil {
+			t.Errorf("unexpected error for valid extra env: %v", err)
+		}
+		var found bool
+		for _, p := range patches {
+			if p.Path == "/spec/initContainers" || p.Path == "/spec/initContainers/-" {
+				switch v := p.Value.(type) {
+				case corev1.Container:
+					for _, e := range v.Env {
+						if e.Name == "CHUR_MY_CUSTOM_VAR" && e.Value == "value" {
+							found = true
+						}
+					}
+				case []corev1.Container:
+					for _, c := range v {
+						for _, e := range c.Env {
+							if e.Name == "CHUR_MY_CUSTOM_VAR" && e.Value == "value" {
+								found = true
+							}
+						}
+					}
+				}
+			}
+		}
+		if !found {
+			t.Error("expected CHUR_MY_CUSTOM_VAR=value in init container env")
+		}
+	})
 }
 
 func TestValidProvidersMatchRegistry(t *testing.T) {

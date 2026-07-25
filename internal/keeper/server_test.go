@@ -209,6 +209,25 @@ func TestHandleGetSecretOverMaxSize(t *testing.T) {
 	}
 }
 
+func TestHandleGetSecretInvalidRef(t *testing.T) {
+	t.Parallel()
+	b := &mockBackend{}
+	sem := make(chan struct{}, 100)
+	h := handleGetSecret(b, 1<<20, sem, "mock")
+
+	for _, ref := range []string{"../secret", "/etc/passwd", "a/../../../b"} {
+		t.Run(ref, func(t *testing.T) {
+			body, _ := json.Marshal(map[string]string{"ref": ref})
+			req := httptest.NewRequest(http.MethodPost, "/v1/secrets/get", bytes.NewReader(body))
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, req)
+			if rec.Code != http.StatusBadRequest {
+				t.Errorf("expected 400 for ref %q, got %d", ref, rec.Code)
+			}
+		})
+	}
+}
+
 func TestKeeperMetrics(t *testing.T) {
 	t.Parallel()
 	b := &mockBackend{data: []byte("secret-value")}

@@ -192,6 +192,20 @@ func TestConfigFromEnv_ExecMaxStdoutError(t *testing.T) {
 	}
 }
 
+func TestConfigFromEnv_FSRootError(t *testing.T) {
+	for _, root := range []string{"/", "/..", "/."} {
+		t.Run(root, func(t *testing.T) {
+			os.Setenv("CHUR_KEEPER_BACKEND_FS_ROOT", root)
+			defer os.Unsetenv("CHUR_KEEPER_BACKEND_FS_ROOT")
+
+			_, err := ConfigFromEnv()
+			if err == nil {
+				t.Errorf("ConfigFromEnv() expected error for FSRoot=%q", root)
+			}
+		})
+	}
+}
+
 func TestConfigFromEnv_HTTPTimeoutError(t *testing.T) {
 	os.Setenv("CHUR_KEEPER_HTTP_TIMEOUT", "-5")
 	defer os.Unsetenv("CHUR_KEEPER_HTTP_TIMEOUT")
