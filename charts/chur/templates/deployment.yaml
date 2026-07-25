@@ -41,7 +41,7 @@ spec:
             - name: CHUR_VOLUME_SIZE_LIMIT
               value: "{{ .Values.webhook.volumeSizeLimit }}"
             - name: CHUR_INIT_IMAGE
-              value: "{{ .Values.initImage.repository }}:{{ .Values.initImage.tag | default .Chart.AppVersion }}"
+              value: "{{ .Values.initImage.repository }}:{{ .Values.initImage.tag | default (printf "%s%s" .Chart.AppVersion (ternary "-slim" "" .Values.initImage.slim)) }}"
             - name: CHUR_INIT_IMAGE_PULL_POLICY
               value: "{{ .Values.initImage.pullPolicy }}"
             - name: CHUR_ALLOWED_NAMESPACES
@@ -77,6 +77,9 @@ spec:
             - name: CHUR_KEEPER_CLIENT_CERT_SECRET_NAME
               value: "{{ .Values.keeper.mtls.clientCert.secretName }}"
             {{- end }}
+          {{- end }}
+          {{- with .Values.webhook.extraEnv }}
+            {{- toYaml . | nindent 12 }}
           {{- end }}
           volumeMounts:
             - name: tls

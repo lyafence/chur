@@ -44,6 +44,10 @@
           "type": "string",
           "enum": ["IfNotPresent", "Always", "Never"],
           "description": "Init image pull policy"
+        },
+        "slim": {
+          "type": "boolean",
+          "description": "Use slim image variant without k8s provider"
         }
       }
     },
@@ -217,6 +221,19 @@
         "priorityClassName": {
           "type": "string",
           "description": "Priority class name for the webhook pod"
+        },
+        "extraEnv": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string" },
+              "value": { "type": "string" }
+            },
+            "required": ["name"]
+          },
+          "description": "Extra environment variables for the webhook container"
         }
       }
     },

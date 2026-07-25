@@ -17,6 +17,9 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Set version
+        run: echo "RELEASE_VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_ENV
+
       - uses: docker/login-action@v4
         with:
           registry: ghcr.io
@@ -27,19 +30,19 @@ jobs:
       - uses: docker/setup-buildx-action@v4
 
       - name: Build and scan webhook
-        id: webhook
         uses: docker/build-push-action@v7
         with:
           context: .
           file: Dockerfile.webhook
           push: false
           load: true
-          tags: ghcr.io/${{ github.repository_owner }}/chur-webhook:${{ github.ref_name }}
+          build-args: VERSION=${{ env.RELEASE_VERSION }}
+          tags: ghcr.io/${{ github.repository_owner }}/chur-webhook:${{ env.RELEASE_VERSION }}
 
       - name: Scan webhook
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: ghcr.io/${{ github.repository_owner }}/chur-webhook:${{ github.ref_name }}
+          image-ref: ghcr.io/${{ github.repository_owner }}/chur-webhook:${{ env.RELEASE_VERSION }}
           format: table
           exit-code: 1
           ignore-unfixed: true
@@ -49,7 +52,7 @@ jobs:
       - name: Generate webhook SBOM
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: ghcr.io/${{ github.repository_owner }}/chur-webhook:${{ github.ref_name }}
+          image-ref: ghcr.io/${{ github.repository_owner }}/chur-webhook:${{ env.RELEASE_VERSION }}
           format: cyclonedx
           output: sbom-webhook.json
           scanners: vuln
@@ -61,12 +64,15 @@ jobs:
           file: Dockerfile.init
           push: false
           load: true
-          tags: ghcr.io/${{ github.repository_owner }}/chur-init:${{ github.ref_name }}
+          build-args: |
+            VERSION=${{ env.RELEASE_VERSION }}
+            GOFLAGS=-tags=provider_k8s
+          tags: ghcr.io/${{ github.repository_owner }}/chur-init:${{ env.RELEASE_VERSION }}
 
       - name: Scan init
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: ghcr.io/${{ github.repository_owner }}/chur-init:${{ github.ref_name }}
+          image-ref: ghcr.io/${{ github.repository_owner }}/chur-init:${{ env.RELEASE_VERSION }}
           format: table
           exit-code: 1
           ignore-unfixed: true
@@ -76,7 +82,7 @@ jobs:
       - name: Generate init SBOM
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: ghcr.io/${{ github.repository_owner }}/chur-init:${{ github.ref_name }}
+          image-ref: ghcr.io/${{ github.repository_owner }}/chur-init:${{ env.RELEASE_VERSION }}
           format: cyclonedx
           output: sbom-init.json
           scanners: vuln
@@ -88,12 +94,13 @@ jobs:
           file: Dockerfile.keeper
           push: false
           load: true
-          tags: ghcr.io/${{ github.repository_owner }}/chur-keeper:${{ github.ref_name }}
+          build-args: VERSION=${{ env.RELEASE_VERSION }}
+          tags: ghcr.io/${{ github.repository_owner }}/chur-keeper:${{ env.RELEASE_VERSION }}
 
       - name: Scan keeper
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: ghcr.io/${{ github.repository_owner }}/chur-keeper:${{ github.ref_name }}
+          image-ref: ghcr.io/${{ github.repository_owner }}/chur-keeper:${{ env.RELEASE_VERSION }}
           format: table
           exit-code: 1
           ignore-unfixed: true
@@ -103,7 +110,7 @@ jobs:
       - name: Generate keeper SBOM
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: ghcr.io/${{ github.repository_owner }}/chur-keeper:${{ github.ref_name }}
+          image-ref: ghcr.io/${{ github.repository_owner }}/chur-keeper:${{ env.RELEASE_VERSION }}
           format: cyclonedx
           output: sbom-keeper.json
           scanners: vuln
@@ -111,18 +118,23 @@ jobs:
       - name: Push images (multi-arch)
         run: |
           docker buildx build --push --platform linux/amd64,linux/arm64 \
-            --build-arg VERSION=${{ github.ref_name }} \
-            -t ghcr.io/${{ github.repository_owner }}/chur-webhook:${{ github.ref_name }} \
+            --build-arg VERSION=${{ env.RELEASE_VERSION }} \
+            -t ghcr.io/${{ github.repository_owner }}/chur-webhook:${{ env.RELEASE_VERSION }} \
             -t ghcr.io/${{ github.repository_owner }}/chur-webhook:latest \
             -f Dockerfile.webhook .
           docker buildx build --push --platform linux/amd64,linux/arm64 \
-            --build-arg VERSION=${{ github.ref_name }} \
-            -t ghcr.io/${{ github.repository_owner }}/chur-init:${{ github.ref_name }} \
+            --build-arg VERSION=${{ env.RELEASE_VERSION }} \
+            -t ghcr.io/${{ github.repository_owner }}/chur-init:${{ env.RELEASE_VERSION }}-slim \
+            -f Dockerfile.init .
+          docker buildx build --push --platform linux/amd64,linux/arm64 \
+            --build-arg VERSION=${{ env.RELEASE_VERSION }} \
+            --build-arg GOFLAGS="-tags=provider_k8s" \
+            -t ghcr.io/${{ github.repository_owner }}/chur-init:${{ env.RELEASE_VERSION }} \
             -t ghcr.io/${{ github.repository_owner }}/chur-init:latest \
             -f Dockerfile.init .
           docker buildx build --push --platform linux/amd64,linux/arm64 \
-            --build-arg VERSION=${{ github.ref_name }} \
-            -t ghcr.io/${{ github.repository_owner }}/chur-keeper:${{ github.ref_name }} \
+            --build-arg VERSION=${{ env.RELEASE_VERSION }} \
+            -t ghcr.io/${{ github.repository_owner }}/chur-keeper:${{ env.RELEASE_VERSION }} \
             -t ghcr.io/${{ github.repository_owner }}/chur-keeper:latest \
             -f Dockerfile.keeper .
 
@@ -135,9 +147,8 @@ jobs:
 
       - name: Update Chart.yaml version
         run: |
-          VER="${GITHUB_REF_NAME#v}"
-          sed -i "s/^version:.*/version: ${VER}/" charts/chur/Chart.yaml
-          sed -i "s/^appVersion:.*/appVersion: \"${VER}\"/" charts/chur/Chart.yaml
+          sed -i "s/^version:.*/version: ${RELEASE_VERSION}/" charts/chur/Chart.yaml
+          sed -i "s/^appVersion:.*/appVersion: \"${RELEASE_VERSION}\"/" charts/chur/Chart.yaml
 
       - name: Configure Git
         run: |

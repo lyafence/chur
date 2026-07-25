@@ -47,6 +47,35 @@ func TestValidateSecretRef(t *testing.T) {
 	}
 }
 
+func TestValidateSecretRef_ErrorMessages(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		ref     string
+		wantMsg string
+	}{
+		{"empty", "", "must not be empty"},
+		{"too-long", strings.Repeat("a", 256), "exceeds 255 characters"},
+		{"dot", ".", "must not be '.'"},
+		{"dotdot", "..", "must not contain '..'"},
+		{"slash", "foo/bar", "must not contain path separators"},
+		{"backslash", "foo\\bar", "must not contain path separators"},
+		{"special", "secret!", "contains invalid character"},
+		{"cyrillic", "secret-а", "contains invalid character"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateSecretRef(tt.ref)
+			if err == nil {
+				t.Fatalf("expected error for %q", tt.ref)
+			}
+			if !strings.Contains(err.Error(), tt.wantMsg) {
+				t.Fatalf("ValidateSecretRef(%q) error = %v, want contains %q", tt.ref, err, tt.wantMsg)
+			}
+		})
+	}
+}
+
 func TestValidateMountPath(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -84,6 +113,30 @@ func TestValidateMountPath(t *testing.T) {
 	}
 }
 
+func TestValidateMountPath_ErrorMessages(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		path    string
+		wantMsg string
+	}{
+		{"relative", "relative/path", "must be absolute"},
+		{"dotdot", "/etc/../secrets", "must not contain '..'"},
+		{"special", "/path/with!special", "contains invalid character"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateMountPath(tt.path)
+			if err == nil {
+				t.Fatalf("expected error for %q", tt.path)
+			}
+			if !strings.Contains(err.Error(), tt.wantMsg) {
+				t.Fatalf("ValidateMountPath(%q) error = %v, want contains %q", tt.path, err, tt.wantMsg)
+			}
+		})
+	}
+}
+
 func TestValidateKeeperRef(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -107,6 +160,31 @@ func TestValidateKeeperRef(t *testing.T) {
 			}
 			if !tc.valid && err == nil {
 				t.Errorf("ValidateKeeperRef(%q) expected error", tc.ref)
+			}
+		})
+	}
+}
+
+func TestValidateKeeperRef_ErrorMessages(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		ref     string
+		wantMsg string
+	}{
+		{"empty", "", "must not be empty"},
+		{"absolute", "/absolute", "must not be an absolute path"},
+		{"traversal", "../etc/passwd", "must not contain '..'"},
+		{"backslash", "a\\b", "contains invalid character"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateKeeperRef(tt.ref)
+			if err == nil {
+				t.Fatalf("expected error for %q", tt.ref)
+			}
+			if !strings.Contains(err.Error(), tt.wantMsg) {
+				t.Fatalf("ValidateKeeperRef(%q) error = %v, want contains %q", tt.ref, err, tt.wantMsg)
 			}
 		})
 	}

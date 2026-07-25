@@ -16,6 +16,9 @@ initImage:
   tag: ""
   # initImage.pullPolicy is the image pull policy.
   pullPolicy: IfNotPresent
+  # initImage.slim uses the slim image variant without the k8s provider.
+  # Requires the "-slim" tag to exist in the registry. Default false.
+  slim: false
 
 # imagePullSecrets is a list of image pull secret names for the webhook pod.
 imagePullSecrets: []
@@ -80,8 +83,13 @@ webhook:
   securityContext: {}
   # webhook.priorityClassName is the priority class name for the webhook pod (opt-in).
   priorityClassName: ""
+  # webhook.extraEnv is a list of extra environment variables for the webhook container.
+  extraEnv: []
   # webhook.skipNamespaces is a list of namespaces that the webhook should NOT intercept.
   # Defaults to ["kube-system"] for safety.
+  # The release namespace is also automatically excluded from interception
+  # (see _helpers.tpl). To allow the webhook in its own namespace, add the
+  # release namespace to webhook.allowedNamespaces.
   skipNamespaces:
     - kube-system
 

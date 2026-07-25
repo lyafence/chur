@@ -37,7 +37,7 @@ func TestE2E(t *testing.T) {
 
 	waitForPodReady(t, clientset, ns, podName, 2*time.Minute)
 
-	stdout, stderr, err := execInPod("", ns, podName, "app", "cat", "/secrets/"+secretName)
+	stdout, stderr, err := execInPod(t.Context(), "", ns, podName, "app", "cat", "/secrets/"+secretName)
 	if err != nil {
 		t.Fatalf("exec failed: %v\nstderr: %s", err, stderr)
 	}
@@ -69,7 +69,7 @@ func TestE2E_LocalProvider(t *testing.T) {
 
 	waitForPodReady(t, clientset, ns, podName, 2*time.Minute)
 
-	stdout, stderr, err := execInPod("", ns, podName, "app", "cat", "/secrets/"+secretRef)
+	stdout, stderr, err := execInPod(t.Context(), "", ns, podName, "app", "cat", "/secrets/"+secretRef)
 	if err != nil {
 		t.Fatalf("exec failed: %v\nstderr: %s", err, stderr)
 	}
@@ -101,7 +101,7 @@ func TestE2E_KeeperProvider(t *testing.T) {
 
 	waitForPodReady(t, clientset, ns, podName, 2*time.Minute)
 
-	stdout, stderr, err := execInPod("", ns, podName, "app", "cat", "/secrets/"+secretRef)
+	stdout, stderr, err := execInPod(t.Context(), "", ns, podName, "app", "cat", "/secrets/"+secretRef)
 	if err != nil {
 		t.Fatalf("exec failed: %v\nstderr: %s", err, stderr)
 	}
@@ -239,7 +239,7 @@ func TestE2E_MultipleContainers(t *testing.T) {
 	t.Logf("pod %s ready, verifying all containers can read the secret", podName)
 
 	for _, c := range []string{"app1", "app2"} {
-		stdout, stderr, err := execInPod("", ns, podName, c, "cat", "/secrets/"+secretName)
+		stdout, stderr, err := execInPod(t.Context(), "", ns, podName, c, "cat", "/secrets/"+secretName)
 		if err != nil {
 			t.Fatalf("container %s: exec failed: %v\nstderr: %s", c, err, stderr)
 		}

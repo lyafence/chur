@@ -15,7 +15,7 @@ func TestGetReturnsFalseForUnknown(t *testing.T) {
 
 func TestGetReturnsRegisteredTrue(t *testing.T) {
 	t.Parallel()
-	for name := range registry {
+	for _, name := range Names() {
 		if _, ok := Get(name); !ok {
 			t.Errorf("Get(%q) = false after Register()", name)
 		}
@@ -24,7 +24,11 @@ func TestGetReturnsRegisteredTrue(t *testing.T) {
 
 func TestFactoriesCreate(t *testing.T) {
 	t.Parallel()
-	for name, factory := range registry {
+	for _, name := range Names() {
+		factory, ok := Get(name)
+		if !ok {
+			t.Skipf("provider %q not found in registry", name)
+		}
 		p, err := factory(context.Background())
 		if err != nil {
 			t.Skipf("skipping provider %q: factory failed (environment not available): %v", name, err)

@@ -56,9 +56,7 @@ namespaceSelector:
         {{- range .Values.webhook.skipNamespaces }}
         - {{ . }}
         {{- end }}
-        {{- if not (has .Release.Namespace .Values.webhook.allowedNamespaces) }}
         - {{ .Release.Namespace }}
-        {{- end }}
 {{- end }}
 
 {{- define "chur.webhook.tlsChecksum" -}}

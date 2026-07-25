@@ -63,9 +63,17 @@ func main() {
 
 	if v := os.Getenv("CHUR_INIT_IMAGE"); v != "" {
 		cfg.InitImage = v
+	} else if version != "dev" {
+		cfg.InitImage = "ghcr.io/lyafence/chur-init:" + version
 	}
 	if v := os.Getenv("CHUR_INIT_IMAGE_PULL_POLICY"); v != "" {
-		cfg.InitImagePullPolicy = corev1.PullPolicy(v)
+		switch corev1.PullPolicy(v) {
+		case corev1.PullAlways, corev1.PullNever, corev1.PullIfNotPresent:
+			cfg.InitImagePullPolicy = corev1.PullPolicy(v)
+		default:
+			slog.ErrorContext(ctx, "invalid CHUR_INIT_IMAGE_PULL_POLICY: must be Always, Never, or IfNotPresent", "value", v)
+			os.Exit(1)
+		}
 	}
 	if v := os.Getenv("CHUR_RUN_AS_USER"); v != "" {
 		n, err := strconv.ParseInt(v, 10, 64)

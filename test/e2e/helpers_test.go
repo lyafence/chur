@@ -243,10 +243,10 @@ func createTestPodExpectError(cs kubernetes.Interface, ns, name string, annotati
 	return err
 }
 
-func execInPod(kubeconfig, ns, pod, container string, cmd ...string) (string, string, error) {
+func execInPod(ctx context.Context, kubeconfig, ns, pod, container string, cmd ...string) (string, string, error) {
 	args := []string{"exec", "-n", ns, pod, "-c", container, "--"}
 	args = append(args, cmd...)
-	c := exec.Command("kubectl", args...)
+	c := exec.CommandContext(ctx, "kubectl", args...)
 	if kubeconfig != "" {
 		c.Env = append(os.Environ(), "KUBECONFIG="+kubeconfig)
 	}
