@@ -86,6 +86,7 @@ type Config struct {
 	KeeperServerCA             string
 	KeeperClientCertSecretName string
 	KeeperClientMaxSecretSize  string
+	AllowKeeperSkipVerify      bool
 }
 
 // DefaultConfig returns a Config with safe defaults.
@@ -101,6 +102,7 @@ func DefaultConfig() *Config {
 		FSGroup:                1001,
 		KeeperServiceNamespace: "chur-system",
 		KeeperServicePort:      "9443",
+		AllowKeeperSkipVerify:  false,
 	}
 }
 
@@ -321,14 +323,18 @@ func MutatePod(pod *corev1.Pod, cfg *Config) ([]PatchOperation, *AuditInfo, erro
 			initEnv = append(initEnv, corev1.EnvVar{Name: "CHUR_KEEPER_CLIENT_MAX_SECRET_SIZE", Value: cfg.KeeperClientMaxSecretSize})
 		}
 		if pod.Annotations[annotationKeeperSkipVerify] == "1" || pod.Annotations[annotationKeeperSkipVerify] == "true" {
+			if !cfg.AllowKeeperSkipVerify {
+				return nil, ai, fmt.Errorf("%w: %s is set but webhook is not configured to allow it", ErrValidation, annotationKeeperSkipVerify)
+			}
 			initEnv = append(initEnv, corev1.EnvVar{Name: "CHUR_KEEPER_INSECURE_SKIP_VERIFY", Value: "1"})
 		}
-		extraEnv, err := parseProviderEnv(pod.Annotations[annotationProviderEnv])
-		if err != nil {
-			return nil, ai, err
-		}
-		initEnv = append(initEnv, extraEnv...)
 	}
+
+	extraEnv, err := parseProviderEnv(pod.Annotations[annotationProviderEnv])
+	if err != nil {
+		return nil, ai, err
+	}
+	initEnv = append(initEnv, extraEnv...)
 
 	// The local provider reads files from the node filesystem. Mount the base
 	// directory as a read-only hostPath volume into the init container only.

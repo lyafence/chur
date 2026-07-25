@@ -112,6 +112,37 @@ func TestValidateKeeperRef(t *testing.T) {
 	}
 }
 
+func TestValidateLocalBasePath(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		path    string
+		wantErr bool
+	}{
+		{"simple", "/etc/chur/secrets", false},
+		{"nested", "/var/lib/chur/secrets", false},
+		{"empty", "", true},
+		{"root", "/", true},
+		{"relative", "etc/chur", true},
+		{"dotdot", "/etc/../secrets", true},
+		{"space", "/path/with space", true},
+		{"special", "/path/with!chars", true},
+		{"too-long", "/" + strings.Repeat("a", 4096), true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateLocalBasePath(tt.path)
+			if tt.wantErr && err == nil {
+				t.Fatalf("expected error for %q", tt.path)
+			}
+			if !tt.wantErr && err != nil {
+				t.Fatalf("unexpected error for %q: %v", tt.path, err)
+			}
+		})
+	}
+}
+
 func TestValidateSecretKey(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

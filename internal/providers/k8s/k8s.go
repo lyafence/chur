@@ -6,7 +6,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"sort"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -48,13 +47,8 @@ func (p *K8sProvider) GetSecret(ctx context.Context, ref string) ([]byte, error)
 		}
 	}
 
-	// Multiple keys and no explicit key selected. Return a deterministic error.
-	keys := make([]string, 0, len(sec.Data))
-	for k := range sec.Data {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return nil, fmt.Errorf("k8s: secret %s/%s contains multiple keys (%v); specify CHUR_SECRET_KEY", p.namespace, ref, keys)
+	// Multiple keys and no explicit key selected.
+	return nil, fmt.Errorf("k8s: secret %s/%s contains multiple keys; specify CHUR_SECRET_KEY", p.namespace, ref)
 }
 
 func init() {

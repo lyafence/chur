@@ -59,7 +59,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	secret, err := backoffFetch(ctx, factory, secretRef)
+	p, err := initProvider(ctx, factory)
+	if err != nil {
+		slog.ErrorContext(ctx, "failed to create provider", "provider", providerName, "error", err)
+		os.Exit(1)
+	}
+
+	secret, err := backoffFetch(ctx, p, secretRef)
 	if err != nil {
 		slog.ErrorContext(ctx, "failed to get secret", "ref", secretRef, "error", err)
 		os.Exit(1)
@@ -110,9 +116,31 @@ func main() {
 	slog.InfoContext(ctx, "secret injected", "provider", providerName, "ref", secretRef, "path", path, "bytes", len(secret))
 }
 
+// initProvider creates a SecretProvider with exponential backoff retry.
+func initProvider(ctx context.Context, factory provider.Factory) (provider.SecretProvider, error) {
+	var lastErr error
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		if attempt > 0 {
+			delay := time.Duration(1<<(attempt-1))*time.Second + time.Duration(rand.Intn(500))*time.Millisecond
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(delay):
+			}
+		}
+		p, err := factory(ctx)
+		if err == nil {
+			return p, nil
+		}
+		lastErr = err
+	}
+	return nil, lastErr
+}
+
 // backoffFetch fetches a secret with exponential backoff retry.
 // Network may not be ready immediately in init containers; retry with jitter.
-func backoffFetch(ctx context.Context, factory provider.Factory, secretRef string) ([]byte, error) {
+// The provider must already be initialized — use initProvider first.
+func backoffFetch(ctx context.Context, p provider.SecretProvider, secretRef string) ([]byte, error) {
 	var lastErr error
 	for attempt := 0; attempt < maxRetries; attempt++ {
 		if attempt > 0 {
@@ -123,12 +151,6 @@ func backoffFetch(ctx context.Context, factory provider.Factory, secretRef strin
 				return nil, ctx.Err()
 			case <-time.After(delay):
 			}
-		}
-
-		p, err := factory(ctx)
-		if err != nil {
-			lastErr = err
-			continue
 		}
 
 		secret, err := p.GetSecret(ctx, secretRef)

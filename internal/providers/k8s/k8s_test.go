@@ -4,6 +4,7 @@ package k8s
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
@@ -62,6 +63,9 @@ func TestK8sProvider_GetSecret_MultipleKeysNoSelection(t *testing.T) {
 	_, err := p.GetSecret(context.Background(), "my-secret")
 	if err == nil {
 		t.Fatal("expected error when multiple keys exist and none selected")
+	}
+	if strings.Contains(err.Error(), "[a b]") || strings.Contains(err.Error(), "a, b") {
+		t.Errorf("error must not enumerate secret key names, got: %v", err)
 	}
 }
 

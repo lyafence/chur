@@ -99,6 +99,32 @@ func isAllowedMountRune(r rune) bool {
 	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '/' || r == '-' || r == '_' || r == '.'
 }
 
+// ValidateLocalBasePath validates the CHUR_LOCAL_BASE_PATH configuration value.
+// It must be a non-root absolute path with restricted characters.
+func ValidateLocalBasePath(path string) error {
+	if path == "" {
+		return fmt.Errorf("local base path must not be empty")
+	}
+	if len(path) > 4096 {
+		return fmt.Errorf("local base path exceeds 4096 characters")
+	}
+	if !strings.HasPrefix(path, "/") {
+		return fmt.Errorf("local base path must be absolute")
+	}
+	if path == "/" {
+		return fmt.Errorf("local base path must not be root")
+	}
+	if strings.Contains(path, "..") {
+		return fmt.Errorf("local base path must not contain '..'")
+	}
+	for i, r := range path {
+		if !isAllowedMountRune(r) {
+			return fmt.Errorf("local base path contains invalid character %q at position %d", r, i)
+		}
+	}
+	return nil
+}
+
 // ValidateKeeperRef validates a ref used by the keeper provider.
 // It allows hierarchical names with '/' but forbids traversal and absolute paths.
 func ValidateKeeperRef(ref string) error {

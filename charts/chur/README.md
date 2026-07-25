@@ -174,7 +174,7 @@ Additional keeper annotations:
 
 | Annotation | Effect |
 |---|------|
-| `chur.io/keeper-skip-verify: "1"` or `"true"` | Injects `CHUR_KEEPER_INSECURE_SKIP_VERIFY=1` (dev, skips TLS verification) |
+| `chur.io/keeper-skip-verify: "1"` or `"true"` | Injects `CHUR_KEEPER_INSECURE_SKIP_VERIFY=1` (dev, skips TLS verification). **Rejected at admission unless `webhook.allowKeeperSkipVerify=true`** |
 
 When `keeper.mtls.enabled=true`, the webhook automatically injects
 `CHUR_KEEPER_TLS_CERT_PATH`, `CHUR_KEEPER_TLS_KEY_PATH`, and

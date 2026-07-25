@@ -141,6 +141,10 @@
           "items": { "type": "string" },
           "description": "Namespaces where webhook mutates pods. Empty means all namespaces"
         },
+        "allowKeeperSkipVerify": {
+          "type": "boolean",
+          "description": "Allow pods to skip TLS verification when connecting to chur-keeper (dev only)"
+        },
         "maxConcurrent": {
           "type": "integer",
           "minimum": 1,

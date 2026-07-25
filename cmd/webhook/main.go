@@ -21,6 +21,7 @@ import (
 	"k8s.io/utils/ptr"
 
 	"github.com/lyafence/chur/internal/tls"
+	"github.com/lyafence/chur/internal/validate"
 	"github.com/lyafence/chur/internal/webhook"
 )
 
@@ -96,6 +97,10 @@ func main() {
 		cfg.MaxSecretSize = v
 	}
 	if v := os.Getenv("CHUR_LOCAL_BASE_PATH"); v != "" {
+		if err := validate.ValidateLocalBasePath(v); err != nil {
+			slog.ErrorContext(ctx, "invalid CHUR_LOCAL_BASE_PATH", "value", v, "error", err)
+			os.Exit(1)
+		}
 		cfg.LocalBasePath = v
 	}
 	if v := os.Getenv("CHUR_MAX_CONCURRENT"); v != "" {
@@ -115,6 +120,9 @@ func main() {
 	cfg.KeeperServerCA = os.Getenv("CHUR_KEEPER_SERVER_CA")
 	cfg.KeeperClientCertSecretName = os.Getenv("CHUR_KEEPER_CLIENT_CERT_SECRET_NAME")
 	cfg.KeeperClientMaxSecretSize = os.Getenv("CHUR_KEEPER_CLIENT_MAX_SECRET_SIZE")
+	if v := os.Getenv("CHUR_ALLOW_KEEPER_SKIP_VERIFY"); v == "1" || v == "true" {
+		cfg.AllowKeeperSkipVerify = true
+	}
 
 	maxSize, err := resource.ParseQuantity(cfg.MaxSecretSize)
 	if err == nil && cfg.VolumeSizeLimit.Value() < maxSize.Value() {

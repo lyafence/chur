@@ -113,3 +113,24 @@ exit 42
 		t.Error("expected error for non-zero exit")
 	}
 }
+
+func TestExecStderrNotLeaked(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	script := filepath.Join(dir, "stderr-secret.sh")
+	if err := os.WriteFile(script, []byte(`#!/bin/sh
+echo "SECRET=supersecretvalue" >&2
+exit 42
+`), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	b := mustCreate(t, script, 0, 1<<20)
+	_, err := b.GetSecret(context.Background(), "ref")
+	if err == nil {
+		t.Fatal("expected error for non-zero exit")
+	}
+	if strings.Contains(err.Error(), "supersecretvalue") {
+		t.Errorf("error must not contain stderr content, got: %v", err)
+	}
+}

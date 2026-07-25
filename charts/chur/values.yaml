@@ -59,6 +59,9 @@ webhook:
   # webhook.allowedNamespaces is a list of namespaces where webhook mutates pods.
   # Empty means all namespaces.
   allowedNamespaces: []
+  # webhook.allowKeeperSkipVerify allows pods to skip TLS verification when
+  # connecting to chur-keeper (dev only). Set false in production.
+  allowKeeperSkipVerify: false
   # webhook.maxConcurrent is the maximum number of concurrent admission reviews.
   maxConcurrent: 100
   # webhook.failurePolicy is the failure policy for the MutatingWebhookConfiguration.

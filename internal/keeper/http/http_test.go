@@ -206,3 +206,18 @@ func TestHTTPBackendRejectsNoScheme(t *testing.T) {
 		t.Fatal("expected error for missing scheme")
 	}
 }
+
+func TestHTTPBackendProxyDisabled(t *testing.T) {
+	t.Parallel()
+	b, err := New("https://example.com", "", 0, 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr, ok := b.client.Transport.(*http.Transport)
+	if !ok {
+		t.Fatal("expected *http.Transport")
+	}
+	if tr.Proxy != nil {
+		t.Error("expected Proxy to be nil, but DefaultTransport.Clone inherits http.ProxyFromEnvironment")
+	}
+}

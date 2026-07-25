@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
-	"strings"
 
 	"github.com/lyafence/chur/internal/bytesize"
 	"github.com/lyafence/chur/internal/provider"
@@ -25,19 +23,15 @@ func (p *LocalProvider) GetSecret(ctx context.Context, ref string) ([]byte, erro
 		return nil, fmt.Errorf("local: invalid ref: %w", err)
 	}
 
-	path := filepath.Join(p.basePath, ref)
-	cleanBase := filepath.Clean(p.basePath) + string(filepath.Separator)
-	resolved, err := filepath.EvalSymlinks(path)
+	root, err := os.OpenRoot(p.basePath)
 	if err != nil {
-		return nil, fmt.Errorf("local: resolve %s: %w", path, err)
+		return nil, fmt.Errorf("local: open root %s: %w", p.basePath, err)
 	}
-	if !strings.HasPrefix(resolved, cleanBase) {
-		return nil, fmt.Errorf("local: ref %q escapes base path", ref)
-	}
+	defer root.Close()
 
-	f, err := os.Open(path)
+	f, err := root.Open(ref)
 	if err != nil {
-		return nil, fmt.Errorf("local: open %s: %w", path, err)
+		return nil, fmt.Errorf("local: open %s: %w", ref, err)
 	}
 
 	type readResult struct {
@@ -58,7 +52,7 @@ func (p *LocalProvider) GetSecret(ctx context.Context, ref string) ([]byte, erro
 	case r := <-ch:
 		f.Close()
 		if r.err != nil {
-			return nil, fmt.Errorf("local: read %s: %w", path, r.err)
+			return nil, fmt.Errorf("local: read %s: %w", ref, r.err)
 		}
 		if int64(len(r.data)) > p.maxSize {
 			return nil, fmt.Errorf("local: secret exceeds max size")

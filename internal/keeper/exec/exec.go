@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os/exec"
 	"time"
 
@@ -105,11 +106,8 @@ func (b *ExecBackend) GetSecret(ctx context.Context, ref string) ([]byte, error)
 		if ctx.Err() != nil {
 			return nil, fmt.Errorf("exec: command timed out")
 		}
-		stderrMsg := stderr.String()
-		if len(stderrMsg) > 1024 {
-			stderrMsg = stderrMsg[:1024] + "...(truncated)"
-		}
-		return nil, fmt.Errorf("exec: %s: %w (stderr: %s)", b.command, waitErr, stderrMsg)
+		slog.DebugContext(ctx, "exec: command failed", "command", b.command, "ref", ref, "error", waitErr, "stderr", stderr.String())
+		return nil, fmt.Errorf("exec: %s: %w", b.command, waitErr)
 	}
 
 	return out.Bytes(), nil

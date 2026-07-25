@@ -238,6 +238,7 @@ func TestKeeperMetrics(t *testing.T) {
 }
 
 func TestServerTLSConfig_SelfSignedWithCerts(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	certFile := filepath.Join(dir, "tls.crt")
 	keyFile := filepath.Join(dir, "tls.key")
@@ -266,6 +267,7 @@ func TestServerTLSConfig_SelfSignedWithCerts(t *testing.T) {
 }
 
 func TestServerTLSConfig_SelfSignedAutoGen(t *testing.T) {
+	t.Parallel()
 	cfg := &Config{
 		TLSMode: TLSModeSelfSigned,
 	}
@@ -286,6 +288,7 @@ func TestServerTLSConfig_SelfSignedAutoGen(t *testing.T) {
 }
 
 func TestServerTLSConfig_MTLS(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	certFile := filepath.Join(dir, "tls.crt")
 	keyFile := filepath.Join(dir, "tls.key")
@@ -324,6 +327,7 @@ func TestServerTLSConfig_MTLS(t *testing.T) {
 }
 
 func TestServerTLSConfig_MTLSMissingCA(t *testing.T) {
+	t.Parallel()
 	cfg := &Config{
 		TLSMode:      TLSModeMTLS,
 		TLSCertFile:  "/nonexistent/cert",
@@ -337,6 +341,7 @@ func TestServerTLSConfig_MTLSMissingCA(t *testing.T) {
 }
 
 func TestServerTLSConfig_UnknownMode(t *testing.T) {
+	t.Parallel()
 	cfg := &Config{
 		TLSMode: "invalid",
 	}

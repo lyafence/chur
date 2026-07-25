@@ -100,6 +100,7 @@ helm install chur ./charts/chur \
   --set-json 'keeper.extraVolumes=[{"name":"tmp","emptyDir":{}}]' \
   --set-json 'keeper.extraVolumeMounts=[{"name":"tmp","mountPath":"/tmp"}]' \
   --set tls.provider=helmGenerated \
+  --set webhook.allowKeeperSkipVerify=true \
   --set-json 'rbac.namespaces=["'"$E2E_NAMESPACE"'"]' \
   --wait --timeout 120s
 

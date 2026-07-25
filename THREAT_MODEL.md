@@ -86,7 +86,11 @@ Trust assumptions:
   Pod creation). With `failurePolicy: Ignore`, Pods would be created without
   chur injection, allowing secrets to reach the container through conventional
   Kubernetes mechanisms. The webhook validates all annotations and rejects
-  unknown providers. It is also idempotent under `reinvocationPolicy: IfNeeded`:
+  unknown providers. The `chur.io/keeper-skip-verify` annotation is rejected
+  unless the webhook operator explicitly sets `CHUR_ALLOW_KEEPER_SKIP_VERIFY=true`
+  (default: false) — an attacker who can modify pod annotations cannot bypass
+  TLS verification for keeper connections without operator consent.
+  The webhook is also idempotent under `reinvocationPolicy: IfNeeded`:
   if the API server re-invokes the webhook on an already-mutated Pod, the
   existing tmpfs volume, init container, and volume mounts are detected and not
   duplicated. The webhook's MutatingWebhookConfiguration uses
@@ -136,6 +140,11 @@ Trust assumptions:
   refs may appear in init container and keeper logs for debuggability. The webhook exposes Prometheus metrics on its health port (`/metrics`)
   — these contain only aggregate counters and histograms, no identifying
   information.
+- **Exception:** The exec backend in `chur-keeper` logs stderr output at
+  `Debug` level when a command exits non-zero. This is off by default and
+  must be explicitly enabled via `CHUR_KEEPER_LOG_LEVEL=debug`. The stderr
+  payload is capped at the configured `maxStdout` size and is never included
+  in error responses returned to the caller.
 
 ### T9: Secret leak or abuse via keeper backend
 
@@ -155,11 +164,20 @@ Trust assumptions:
   executable or script is responsible for validating and sanitizing the
   dynamic `ref` parameter to avoid downstream directory traversal,
   command injection, or application-level exploits.
+- **Note:** The `local` provider in `chur-init` uses the same `os.OpenRoot`
+  mechanism for reading secret files from the node filesystem. The same
+  kernel-enforced path traversal and TOCTOU protections apply.
 - **Note:** For the `http` backend, `chur-keeper` sends `ref` as a URL
   query parameter (`?ref=<url-encoded-ref>`). `ValidateKeeperRef` is applied
   before the request, preventing traversal and injection. The upstream server
   is responsible for authentication (Bearer token from file) and authorization
   of the requested secret ref.
+- **Note:** The HTTP backend explicitly disables environment proxy
+  (`HTTP_PROXY`, `HTTPS_PROXY`) by setting `transport.Proxy = nil`.
+  This prevents an attacker who can set environment variables in the keeper
+  pod from redirecting outbound HTTPS requests. If your infrastructure
+  requires a proxy for all outbound traffic, you must add the keeper
+  service name to `NO_PROXY`.
 
 ### T10: Webhook service account compromise
 

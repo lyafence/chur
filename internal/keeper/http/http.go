@@ -41,12 +41,6 @@ func New(baseURL, tokenFile string, timeout time.Duration, maxSize int64) (*HTTP
 			return nil, fmt.Errorf("http: read token file: %w", err)
 		}
 		token = strings.TrimSpace(string(b))
-		token = strings.Map(func(r rune) rune {
-			if r == '\n' || r == '\r' {
-				return -1
-			}
-			return r
-		}, token)
 	}
 
 	if timeout <= 0 {
@@ -60,6 +54,7 @@ func New(baseURL, tokenFile string, timeout time.Duration, maxSize int64) (*HTTP
 	transport.TLSClientConfig = &tls.Config{
 		MinVersion: tls.VersionTLS13,
 	}
+	transport.Proxy = nil
 
 	return &HTTPBackend{
 		baseURL: strings.TrimRight(baseURL, "/"),

@@ -168,7 +168,7 @@ The application reads the secret from `/secrets/<ref>` (e.g. `/secrets/db-creden
 | `chur.io/secret-key` | Key within the Kubernetes Secret's data map (used by the `k8s` provider) | No |
 | `chur.io/mount-path` | Path to mount the tmpfs volume (default: `/secrets`) | No |
 | `chur.io/keeper-skip-verify` | Skip TLS verification when calling `chur-keeper` (dev only, `"1"` or `"true"`) | No |
-| `chur.io/provider-env` | Extra `CHUR_*` env vars for chur-init, JSON format: `{"KEY":"VAL"}`. Only applies when provider is `keeper`. Ignored for other providers. The following keys are reserved and cannot be overridden: `CHUR_PROVIDER`, `CHUR_SECRET_REF`, `CHUR_SECRET_KEY`, `CHUR_MOUNT_PATH`, `CHUR_MAX_SECRET_SIZE`, `CHUR_LOCAL_BASE_PATH`, `CHUR_KEEPER_URL`, `CHUR_KEEPER_TLS_CERT_PATH`, `CHUR_KEEPER_TLS_KEY_PATH`, `CHUR_KEEPER_SERVER_CA`, `CHUR_KEEPER_INSECURE_SKIP_VERIFY`, `CHUR_KEEPER_CLIENT_MAX_SECRET_SIZE`. | No |
+| `chur.io/provider-env` | Extra `CHUR_*` env vars for chur-init, JSON format: `{"KEY":"VAL"}`. The following keys are reserved and cannot be overridden: `CHUR_PROVIDER`, `CHUR_SECRET_REF`, `CHUR_SECRET_KEY`, `CHUR_MOUNT_PATH`, `CHUR_MAX_SECRET_SIZE`, `CHUR_LOCAL_BASE_PATH`, `CHUR_KEEPER_URL`, `CHUR_KEEPER_TLS_CERT_PATH`, `CHUR_KEEPER_TLS_KEY_PATH`, `CHUR_KEEPER_SERVER_CA`, `CHUR_KEEPER_INSECURE_SKIP_VERIFY`, `CHUR_KEEPER_CLIENT_MAX_SECRET_SIZE`. | No |
 
 > **Dry-run behavior:** During dry-run requests (e.g., `kubectl apply --dry-run=server`),
 > the webhook returns `Allowed=true` without mutation patches. This allows the API
@@ -267,6 +267,7 @@ init container configuration), see [`.env.example`](.env.example).
 | `CHUR_KEEPER_TLS_CERT_PATH` | — | webhook | Client TLS cert path for chur-init (keeper mTLS, auto-injected) |
 | `CHUR_KEEPER_TLS_KEY_PATH` | — | webhook | Client TLS key path for chur-init (keeper mTLS, auto-injected) |
 | `CHUR_KEEPER_SERVER_CA` | — | webhook | Server CA path for verifying keeper (keeper mTLS, auto-injected) |
+| `CHUR_ALLOW_KEEPER_SKIP_VERIFY` | `false` | webhook | Allow `chur.io/keeper-skip-verify` annotation (dev only) |
 | `CHUR_KEEPER_CLIENT_CERT_SECRET_NAME` | — | webhook | Kubernetes Secret name with client cert for chur-init (auto-mounted) |
 
 ## RBAC Requirements

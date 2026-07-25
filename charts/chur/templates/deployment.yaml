@@ -52,6 +52,10 @@ spec:
               value: "{{ .Values.webhook.localBasePath }}"
             - name: CHUR_MAX_CONCURRENT
               value: "{{ .Values.webhook.maxConcurrent }}"
+          {{- if .Values.webhook.allowKeeperSkipVerify }}
+            - name: CHUR_ALLOW_KEEPER_SKIP_VERIFY
+              value: "true"
+          {{- end }}
           {{- if eq .Values.webhook.tlsMode "mtls" }}
             - name: CHUR_CLIENT_CA_PATH
               value: "{{ .Values.webhook.clientCAPath }}"

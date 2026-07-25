@@ -562,6 +562,7 @@ func TestMutatePodKeeperEnvInjection(t *testing.T) {
 		KeeperServiceNamespace: "chur-system",
 		KeeperServicePort:      "9443",
 		KeeperServerCA:         "/etc/chur-keeper/ca.crt",
+		AllowKeeperSkipVerify:  true,
 	}
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
@@ -720,6 +721,7 @@ func TestMutatePod_KeeperSkipVerifyValues(t *testing.T) {
 		KeeperServiceName:      "chur-keeper",
 		KeeperServiceNamespace: "chur-system",
 		KeeperServicePort:      "9443",
+		AllowKeeperSkipVerify:  true,
 	}
 	tests := []struct {
 		name    string
@@ -780,6 +782,37 @@ func TestMutatePod_KeeperSkipVerifyValues(t *testing.T) {
 				t.Error("unexpected CHUR_KEEPER_INSECURE_SKIP_VERIFY env var")
 			}
 		})
+	}
+}
+
+func TestMutatePod_RejectsKeeperSkipVerifyWithoutOptIn(t *testing.T) {
+	t.Parallel()
+	cfg := &Config{
+		VolumeSizeLimit:        resource.MustParse("10Mi"),
+		InitImage:              "chur-init:latest",
+		MaxSecretSize:          "1Mi",
+		LocalBasePath:          "/etc/chur/secrets",
+		KeeperServiceName:      "chur-keeper",
+		KeeperServiceNamespace: "chur-system",
+		KeeperServicePort:      "9443",
+	}
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test",
+			Namespace: "default",
+			Annotations: map[string]string{
+				annotationProvider:         "keeper",
+				annotationSecret:           "prod/db/password",
+				annotationKeeperSkipVerify: "true",
+			},
+		},
+	}
+	_, _, err := MutatePod(pod, cfg)
+	if err == nil {
+		t.Fatal("expected error when AllowKeeperSkipVerify is false by default")
+	}
+	if !errors.Is(err, ErrValidation) {
+		t.Fatalf("expected ErrValidation, got %v", err)
 	}
 }
 
