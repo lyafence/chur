@@ -104,11 +104,17 @@ func TestNewProviderTLSConfig(t *testing.T) {
 
 func TestGetSecretContextTimeout(t *testing.T) {
 	t.Parallel()
-	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srvCtx, srvCancel := context.WithCancel(t.Context())
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		<-r.Context().Done()
 		_, _ = w.Write([]byte("too-late"))
 	}))
-	defer srv.Close()
+	srv.Config.BaseContext = func(net.Listener) context.Context { return srvCtx }
+	srv.StartTLS()
+	defer func() {
+		srvCancel()
+		srv.Close()
+	}()
 
 	p, err := NewProvider(srv.URL, true, "", "", "")
 	if err != nil {
