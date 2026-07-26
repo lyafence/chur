@@ -107,21 +107,24 @@ helm repo add chur https://lyafence.github.io/chur
 helm repo update
 
 # Install into a dedicated namespace (RBAC resources are created here)
-helm install chur chur/chur --namespace chur-system --create-namespace --wait
+helm install chur chur/chur --namespace chur-system --create-namespace --wait \
+  --set tls.provider=helmGenerated
 
 # For the optional chur-keeper, enable it at install time:
 # helm install chur chur/chur --namespace chur-system --create-namespace --wait \
+#   --set tls.provider=helmGenerated \
 #   --set keeper.enabled=true
 
-# Deploy a test Pod in the same namespace and verify injection
-kubectl -n chur-system create secret generic my-secret --from-literal=token=hello
-kubectl -n chur-system run test-pod --image=busybox --restart=Never \
+# Deploy a test Pod in an app namespace and verify injection
+kubectl create ns test-app
+kubectl -n test-app create secret generic my-secret --from-literal=token=hello
+kubectl -n test-app run test-pod --image=busybox --restart=Never \
   --annotations=chur.io/provider=k8s \
   --annotations=chur.io/secret-ref=my-secret \
   --annotations=chur.io/secret-key=token \
   --serviceaccount=chur-init \
   --command -- sleep 9999
-kubectl -n chur-system exec test-pod -- cat /secrets/my-secret
+kubectl -n test-app exec test-pod -- cat /secrets/my-secret
 # Expected output:
 # hello
 ```
