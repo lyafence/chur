@@ -5,12 +5,17 @@ on:
     tags:
       - "v*"
 
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 permissions:
   contents: write
   packages: write
 
 jobs:
   version:
+    timeout-minutes: 30
     runs-on: ubuntu-latest
     outputs:
       release_version: ${{ steps.set.outputs.release_version }}
@@ -42,6 +47,7 @@ jobs:
             dockerfile: Dockerfile.keeper
             tag: chur-keeper
             goflags: ""
+    timeout-minutes: 30
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -88,6 +94,7 @@ jobs:
 
   push:
     needs: [version, build]
+    timeout-minutes: 30
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -128,6 +135,7 @@ jobs:
 
   release:
     needs: [version, push]
+    timeout-minutes: 30
     permissions:
       contents: write
       packages: write
@@ -192,15 +200,8 @@ jobs:
 
   validate:
     needs: [version, release]
-    runs-on: ubuntu-latest
+    uses: ./.github/workflows/validate-release.yml
+    with:
+      version: ${{ needs.version.outputs.release_version }}
     permissions:
       contents: read
-    steps:
-      - uses: actions/checkout@v7
-      - uses: azure/setup-helm@v5
-        with: { version: latest }
-      - name: Create Kind cluster
-        uses: helm/kind-action@v1
-        with: { cluster_name: chur-validate }
-      - name: Validate release
-        run: bash hack/validate-release.sh "${{ needs.version.outputs.release_version }}"
