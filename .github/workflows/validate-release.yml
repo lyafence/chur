@@ -1,0 +1,35 @@
+name: Validate Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version (e.g. 0.7.1)'
+        required: true
+        type: string
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: azure/setup-helm@v5
+        with:
+          version: latest
+      - name: Login to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" |
+          helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
+      - name: Create Kind cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: chur-validate
+      - name: Validate release
+        run: bash hack/validate-release.sh "${{ inputs.version }}"
