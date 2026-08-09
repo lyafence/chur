@@ -208,3 +208,43 @@ func TestGenerateTLSCert(t *testing.T) {
 		t.Error("key file has excessive permissions")
 	}
 }
+
+func TestGenerateTempCert(t *testing.T) {
+	t.Parallel()
+	certFile, keyFile, cleanup, err := GenerateTempCert("localhost")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := cleanup(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	if _, err := os.Stat(certFile); err != nil {
+		t.Errorf("cert file missing: %v", err)
+	}
+	if _, err := os.Stat(keyFile); err != nil {
+		t.Errorf("key file missing: %v", err)
+	}
+
+	if _, _, cleanupX, err := GenerateTempCert("x"); err != nil {
+		t.Fatal(err)
+	} else if err := cleanupX(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestGenerateTempCertCleanupRemovesDir(t *testing.T) {
+	t.Parallel()
+	certFile, _, cleanup, err := GenerateTempCert("localhost")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cleanup(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Dir(certFile)); !os.IsNotExist(err) {
+		t.Errorf("expected temp dir removed, got %v", err)
+	}
+}

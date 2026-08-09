@@ -1,4 +1,7 @@
 # replicaCount is the number of webhook pod replicas.
+# Production: run at least 2. The webhook is fail-closed (webhook.failurePolicy:
+# Fail), so a single replica becomes a single point of failure for pod creation
+# during drain/upgrade. A ClusterIP Service load-balances admission calls.
 replicaCount: 1
 
 image:
@@ -71,6 +74,12 @@ webhook:
   failurePolicy: Fail
   # webhook.timeoutSeconds is the timeout for admission review requests.
   timeoutSeconds: 5
+  # webhook.matchConditions.enabled adds a CEL match condition so the webhook
+  # is only called for pods carrying the chur.io/provider annotation.
+  # Rendered only on clusters >= 1.30 (stable there); the chart's kubeVersion
+  # floor is 1.28, where the field would be rejected. Set false to disable.
+  matchConditions:
+    enabled: true
   # webhook.resources is the resource requests and limits for the webhook container.
   resources: {}
   # webhook.nodeSelector is a node selector for the webhook pod.
@@ -134,6 +143,7 @@ keeper:
   # keeper.enabled controls whether the chur-keeper deployment and service are created.
   enabled: false
   # keeper.replicaCount is the number of keeper pod replicas.
+  # Production: run at least 2 for availability.
   replicaCount: 1
   image:
     # keeper.image.repository is the container image repository for chur-keeper.

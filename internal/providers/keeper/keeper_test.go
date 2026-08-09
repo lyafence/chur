@@ -101,6 +101,9 @@ func TestNewProviderTLSConfig(t *testing.T) {
 	if tr.TLSClientConfig.MinVersion != tls.VersionTLS13 {
 		t.Errorf("expected TLS 1.3 min, got %v", tr.TLSClientConfig.MinVersion)
 	}
+	if tr.Proxy != nil {
+		t.Error("expected Proxy=nil for in-cluster keeper traffic")
+	}
 }
 
 func TestGetSecretContextTimeout(t *testing.T) {

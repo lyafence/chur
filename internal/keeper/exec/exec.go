@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"time"
 
+	"github.com/lyafence/chur/internal/logsafe"
 	"github.com/lyafence/chur/internal/validate"
 )
 
@@ -110,7 +111,7 @@ func (b *ExecBackend) GetSecret(ctx context.Context, ref string) ([]byte, error)
 		if ctx.Err() != nil {
 			return nil, fmt.Errorf("exec: command timed out")
 		}
-		slog.DebugContext(ctx, "exec: command failed", "command", b.command, "ref", ref, "error", waitErr, "stderr", stderr.String())
+		slog.DebugContext(ctx, "exec: command failed", "command", b.command, "ref", logsafe.Value(ref), "error", waitErr, "stderr", logsafe.Value(stderr.String()))
 		return nil, fmt.Errorf("exec: %s: %w", b.command, waitErr)
 	}
 

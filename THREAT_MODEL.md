@@ -96,6 +96,9 @@ Trust assumptions:
   duplicated. The webhook's MutatingWebhookConfiguration uses
   `scope: Namespaced`, limiting it to namespaced Pods only — it does not
   intercept cluster-scoped resources (e.g., Nodes, CRDs).
+  On clusters >= 1.30 the webhook configuration adds a CEL matchCondition so
+  the API server only calls the webhook for Pods carrying the `chur.io/provider`
+  annotation, reducing the attack surface.
 
 ### T4: Privilege escalation inside the Pod
 
@@ -140,11 +143,16 @@ Trust assumptions:
   refs may appear in init container and keeper logs for debuggability. The webhook exposes Prometheus metrics on its health port (`/metrics`)
   — these contain only aggregate counters and histograms, no identifying
   information.
+  All values logged from user-controlled or external sources (refs, mount
+  paths, HTTP methods/paths, backend errors, exec stderr, keeper status/body)
+  are sanitized by `internal/logsafe` before structured logging: CR/LF and
+  control characters are replaced with `?`, preventing log injection (CWE-117).
 - **Exception:** The exec backend in `chur-keeper` logs stderr output at
   `Debug` level when a command exits non-zero. This is off by default and
   must be explicitly enabled via `CHUR_KEEPER_LOG_LEVEL=debug`. The stderr
-  payload is capped at the configured `maxStdout` size and is never included
-  in error responses returned to the caller.
+  payload is capped at the configured `maxStdout` size, sanitized by
+  `internal/logsafe` before logging, and is never included in error responses
+  returned to the caller.
 
 ### T9: Secret leak or abuse via keeper backend
 
@@ -175,9 +183,13 @@ Trust assumptions:
 - **Note:** The HTTP backend explicitly disables environment proxy
   (`HTTP_PROXY`, `HTTPS_PROXY`) by setting `transport.Proxy = nil`.
   This prevents an attacker who can set environment variables in the keeper
-  pod from redirecting outbound HTTPS requests. If your infrastructure
-  requires a proxy for all outbound traffic, you must add the keeper
-  service name to `NO_PROXY`.
+  pod from redirecting outbound HTTPS requests. With the proxy disabled,
+  outbound requests always go direct (`NO_PROXY` is not consulted).
+- **Note:** The `keeper` provider in `chur-init` (client → chur-keeper) also
+  sets `transport.Proxy = nil`, disabling `HTTP_PROXY`/`HTTPS_PROXY` entirely —
+  keeper traffic always goes direct. This prevents an attacker who controls
+  the init container's environment from redirecting requests to a proxy
+  under their control.
 
 ### T10: Webhook service account compromise
 

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/lyafence/chur/internal/bytesize"
+	"github.com/lyafence/chur/internal/logsafe"
 	"github.com/lyafence/chur/internal/provider"
 	_ "github.com/lyafence/chur/internal/providers/env"
 	_ "github.com/lyafence/chur/internal/providers/keeper"
@@ -83,7 +84,7 @@ func main() {
 	}
 
 	if err := validate.ValidateMountPath(mountPath); err != nil {
-		slog.ErrorContext(ctx, "invalid CHUR_MOUNT_PATH", "path", mountPath, "error", err)
+		slog.ErrorContext(ctx, "invalid CHUR_MOUNT_PATH", "path", logsafe.Value(mountPath), "error", err)
 		os.Exit(1)
 	}
 

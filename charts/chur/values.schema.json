@@ -136,6 +136,16 @@
           "type": "string",
           "description": "Default maximum secret size passed to chur-init"
         },
+        "matchConditions": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Filter webhook calls via CEL matchConditions (requires k8s >= 1.30)"
+            }
+          }
+        },
         "localBasePath": {
           "type": "string",
           "description": "Default base path for the local provider passed to chur-init"

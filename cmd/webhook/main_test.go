@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"testing"
+
+	"k8s.io/apimachinery/pkg/api/resource"
 )
 
 func TestFirstNonEmpty(t *testing.T) {
@@ -51,5 +53,40 @@ func TestValidateDNS1123Label(t *testing.T) {
 				t.Errorf("validateDNS1123Label(%q) = nil, want error", tt.label)
 			}
 		})
+	}
+}
+
+func TestParseMaxSecretSizeEnv(t *testing.T) {
+	t.Parallel()
+	limit := resource.MustParse("10Mi")
+	tests := []struct {
+		name    string
+		value   string
+		wantErr bool
+	}{
+		{"empty ok", "", false},
+		{"binary suffix ok", "1Mi", false},
+		{"plain bytes ok", "1048576", false},
+		{"decimal SI rejected (init cannot parse)", "1M", true},
+		{"fractional binary rejected", "1.5Mi", true},
+		{"milli rejected", "100m", true},
+		{"over volume limit rejected", "11Mi", true},
+		{"garbage rejected", "abc", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := parseMaxSecretSizeEnv(tt.value, limit)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("parseMaxSecretSizeEnv(%q) error = %v, wantErr %v", tt.value, err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestParseMaxSecretSizeEnv_SmallVolumeLimit(t *testing.T) {
+	t.Parallel()
+	_, err := parseMaxSecretSizeEnv("1Mi", resource.MustParse("512Ki"))
+	if err == nil {
+		t.Fatal("expected error: default max secret size exceeds volume limit")
 	}
 }

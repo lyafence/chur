@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/lyafence/chur/internal/bytesize"
+	"github.com/lyafence/chur/internal/logsafe"
 	"github.com/lyafence/chur/internal/provider"
 )
 
@@ -26,6 +27,7 @@ type KeeperProvider struct {
 
 func NewProvider(rawURL string, skipVerify bool, clientCertFile, clientKeyFile, serverCAFile string) (*KeeperProvider, error) {
 	transport := &http.Transport{
+		Proxy: nil,
 		TLSClientConfig: &tls.Config{
 			MinVersion: tls.VersionTLS13,
 		},
@@ -96,9 +98,9 @@ func (p *KeeperProvider) GetSecret(ctx context.Context, ref string) ([]byte, err
 	if resp.StatusCode != http.StatusOK {
 		body, readErr := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 		if readErr != nil {
-			slog.DebugContext(ctx, "keeper: error response read failed", "status", resp.Status, "error", readErr)
+			slog.DebugContext(ctx, "keeper: error response read failed", "status", logsafe.Value(resp.Status), "error", readErr)
 		}
-		slog.DebugContext(ctx, "keeper: error response", "status", resp.Status, "body", string(body))
+		slog.DebugContext(ctx, "keeper: error response", "status", logsafe.Value(resp.Status), "body", logsafe.Value(string(body)))
 		return nil, fmt.Errorf("keeper: %s", resp.Status)
 	}
 

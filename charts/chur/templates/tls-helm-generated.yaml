@@ -54,5 +54,6 @@ webhooks:
     admissionReviewVersions: ["v1"]
     timeoutSeconds: {{ .Values.webhook.timeoutSeconds }}
     reinvocationPolicy: IfNeeded
+    {{- include "chur.webhook.matchConditions" . | nindent 4 }}
     {{- include "chur.webhook.namespaceSelector" . | nindent 4 }}
 {{- end }}

@@ -15,7 +15,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 
-	"github.com/lyafence/chur/internal/health"
+	"github.com/lyafence/chur/internal/logsafe"
 	"github.com/lyafence/chur/internal/metrics"
 )
 
@@ -54,7 +54,7 @@ func NewServer(cfg *Config) (*Server, error) {
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		slog.WarnContext(r.Context(), "method not allowed", "method", r.Method, "path", r.URL.Path)
+		slog.WarnContext(r.Context(), "method not allowed", "method", logsafe.Value(r.Method), "path", logsafe.Value(r.URL.Path))
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
@@ -75,7 +75,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		metrics.WebhookConcurrentRequests.Dec()
 	}()
 
-	slog.InfoContext(r.Context(), "admission review received", "path", r.URL.Path)
+	slog.InfoContext(r.Context(), "admission review received", "path", logsafe.Value(r.URL.Path))
 
 	r.Body = http.MaxBytesReader(w, r.Body, 10*1024*1024)
 
@@ -277,11 +277,4 @@ func (s *Server) mutateWithMetrics(ctx context.Context, review *admissionv1.Admi
 	metrics.WebhookAdmissionDurationSeconds.Observe(time.Since(start).Seconds())
 
 	return resp
-}
-
-// HealthHandler returns an HTTP handler with /healthz, /readyz, and /metrics endpoints.
-func HealthHandler() http.Handler {
-	mux := http.NewServeMux()
-	health.RegisterHealthEndpoints(mux, "webhook", metrics.Handler())
-	return mux
 }

@@ -9,6 +9,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"math/big"
 	"net"
@@ -90,6 +91,26 @@ func GenerateTLSCert(host string, certPath, keyPath string) error {
 	}
 
 	return nil
+}
+
+// GenerateTempCert writes a self-signed cert into a fresh temp directory and
+// returns the cert/key paths plus a cleanup func that removes the directory.
+// Callers must invoke cleanup. On failure the temp dir is removed and nil
+// paths are returned.
+func GenerateTempCert(dnsName string) (certFile, keyFile string, cleanup func() error, err error) {
+	tmpDir, err := os.MkdirTemp("", "chur-tls-*")
+	if err != nil {
+		return "", "", nil, fmt.Errorf("temp dir: %w", err)
+	}
+	cleanup = func() error { return os.RemoveAll(tmpDir) }
+	certFile, keyFile = tmpDir+"/tls.crt", tmpDir+"/tls.key"
+	if err := GenerateTLSCert(dnsName, certFile, keyFile); err != nil {
+		if cleanErr := cleanup(); cleanErr != nil {
+			return "", "", nil, errors.Join(err, fmt.Errorf("cleanup: %w", cleanErr))
+		}
+		return "", "", nil, fmt.Errorf("generate cert: %w", err)
+	}
+	return certFile, keyFile, cleanup, nil
 }
 
 // ClientCAPool parses a PEM-encoded CA certificate and returns a *x509.CertPool

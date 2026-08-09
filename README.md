@@ -271,7 +271,7 @@ init container configuration), see [`.env.example`](.env.example).
 | `CHUR_INIT_IMAGE_PULL_POLICY` | `IfNotPresent` | webhook | Init container image pull policy |
 | `CHUR_MAX_CONCURRENT` | `100` | webhook | Max concurrent admission reviews |
 | `CHUR_PROVIDER` | `env` | init | Secret provider name |
-| `CHUR_MAX_SECRET_SIZE` | `1Mi` | webhook, init | Max secret size (webhook reads and passes to init) |
+| `CHUR_MAX_SECRET_SIZE` | `1Mi` | webhook, init | Max secret size (webhook reads and passes to init; format: plain bytes or `Ki`/`Mi`/`Gi`) |
 | `CHUR_KEEPER_URL` | `https://chur-keeper.chur-system.svc:9443` | init | Keeper service URL (auto-injected) |
 | `CHUR_KEEPER_LISTEN` | `:9443` | keeper | HTTPS listen address |
 | `CHUR_KEEPER_HEALTH_LISTEN` | `:9444` | keeper | Health endpoint listen address |

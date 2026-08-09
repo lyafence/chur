@@ -12,14 +12,17 @@ import (
 	"os/signal"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
 	"golang.org/x/net/netutil"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/utils/ptr"
 
+	"github.com/lyafence/chur/internal/bytesize"
 	"github.com/lyafence/chur/internal/health"
 	"github.com/lyafence/chur/internal/metrics"
 	"github.com/lyafence/chur/internal/tls"
@@ -30,6 +33,10 @@ import (
 var version = "dev"
 
 func main() {
+	os.Exit(run())
+}
+
+func run() int {
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
 
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -41,7 +48,7 @@ func main() {
 		q, err := resource.ParseQuantity(v)
 		if err != nil {
 			slog.ErrorContext(ctx, "invalid CHUR_VOLUME_SIZE_LIMIT", "value", v, "error", err)
-			os.Exit(1)
+			return 1
 		}
 		cfg.VolumeSizeLimit = q
 	}
@@ -55,7 +62,7 @@ func main() {
 			if err := validateDNS1123Label(ns); err != nil {
 				slog.ErrorContext(ctx, "invalid namespace in CHUR_ALLOWED_NAMESPACES",
 					"namespace", ns, "error", err)
-				os.Exit(1)
+				return 1
 			}
 			cfg.AllowedNamespaces = append(cfg.AllowedNamespaces, ns)
 		}
@@ -72,14 +79,14 @@ func main() {
 			cfg.InitImagePullPolicy = corev1.PullPolicy(v)
 		default:
 			slog.ErrorContext(ctx, "invalid CHUR_INIT_IMAGE_PULL_POLICY: must be Always, Never, or IfNotPresent", "value", v)
-			os.Exit(1)
+			return 1
 		}
 	}
 	if v := os.Getenv("CHUR_RUN_AS_USER"); v != "" {
 		n, err := strconv.ParseInt(v, 10, 64)
 		if err != nil {
 			slog.ErrorContext(ctx, "invalid CHUR_RUN_AS_USER", "value", v, "error", err)
-			os.Exit(1)
+			return 1
 		}
 		cfg.RunAsUser = n
 	}
@@ -87,7 +94,7 @@ func main() {
 		n, err := strconv.ParseInt(v, 10, 64)
 		if err != nil {
 			slog.ErrorContext(ctx, "invalid CHUR_RUN_AS_GROUP", "value", v, "error", err)
-			os.Exit(1)
+			return 1
 		}
 		cfg.RunAsGroup = ptr.To(n)
 	}
@@ -95,21 +102,26 @@ func main() {
 		n, err := strconv.ParseInt(v, 10, 64)
 		if err != nil {
 			slog.ErrorContext(ctx, "invalid CHUR_FS_GROUP", "value", v, "error", err)
-			os.Exit(1)
+			return 1
 		}
 		cfg.FSGroup = n
 	}
 	if v := os.Getenv("CHUR_MAX_SECRET_SIZE"); v != "" {
-		if _, err := resource.ParseQuantity(v); err != nil {
+		parsed, err := parseMaxSecretSizeEnv(v, cfg.VolumeSizeLimit)
+		if err != nil {
 			slog.ErrorContext(ctx, "invalid CHUR_MAX_SECRET_SIZE", "value", v, "error", err)
-			os.Exit(1)
+			return 1
 		}
-		cfg.MaxSecretSize = v
+		cfg.MaxSecretSize = parsed
+	}
+	if _, err := parseMaxSecretSizeEnv(cfg.MaxSecretSize, cfg.VolumeSizeLimit); err != nil {
+		slog.ErrorContext(ctx, "invalid CHUR_MAX_SECRET_SIZE", "value", cfg.MaxSecretSize, "error", err)
+		return 1
 	}
 	if v := os.Getenv("CHUR_LOCAL_BASE_PATH"); v != "" {
 		if err := validate.ValidateLocalBasePath(v); err != nil {
 			slog.ErrorContext(ctx, "invalid CHUR_LOCAL_BASE_PATH", "value", v, "error", err)
-			os.Exit(1)
+			return 1
 		}
 		cfg.LocalBasePath = v
 	}
@@ -117,7 +129,7 @@ func main() {
 		n, err := strconv.Atoi(v)
 		if err != nil || n <= 0 {
 			slog.ErrorContext(ctx, "invalid CHUR_MAX_CONCURRENT", "value", v, "error", err)
-			os.Exit(1)
+			return 1
 		}
 		cfg.MaxConcurrent = n
 	}
@@ -134,17 +146,10 @@ func main() {
 		cfg.AllowKeeperSkipVerify = true
 	}
 
-	maxSize, err := resource.ParseQuantity(cfg.MaxSecretSize)
-	if err == nil && cfg.VolumeSizeLimit.Value() < maxSize.Value() {
-		slog.ErrorContext(ctx, "CHUR_VOLUME_SIZE_LIMIT is smaller than CHUR_MAX_SECRET_SIZE",
-			"volume_size_limit", cfg.VolumeSizeLimit.String(), "max_secret_size", cfg.MaxSecretSize)
-		os.Exit(1)
-	}
-
 	srv, err := webhook.NewServer(cfg)
 	if err != nil {
 		slog.ErrorContext(ctx, "failed to create webhook server", "error", err)
-		os.Exit(1)
+		return 1
 	}
 
 	listenAddr := os.Getenv("CHUR_LISTEN")
@@ -155,7 +160,7 @@ func main() {
 	listener, err := net.Listen("tcp", listenAddr)
 	if err != nil {
 		slog.ErrorContext(ctx, "failed to listen", "addr", listenAddr, "error", err)
-		os.Exit(1)
+		return 1
 	}
 	listener = netutil.LimitListener(listener, cfg.MaxConcurrent)
 	healthAddr := os.Getenv("CHUR_HEALTH_LISTEN")
@@ -171,7 +176,7 @@ func main() {
 		tlsMode = webhook.TLSModeServer
 	default:
 		slog.ErrorContext(ctx, "invalid CHUR_TLS_MODE: must be 'server' or 'mtls'", "value", v)
-		os.Exit(1)
+		return 1
 	}
 
 	var clientCAPEM []byte
@@ -184,14 +189,14 @@ func main() {
 		clientCAPEM, err = os.ReadFile(caPath)
 		if err != nil {
 			slog.ErrorContext(ctx, "failed to read client CA", "path", caPath, "error", err)
-			os.Exit(1)
+			return 1
 		}
 	}
 
 	tlsCfg, err := webhook.TLSConfig(tlsMode, clientCAPEM)
 	if err != nil {
 		slog.ErrorContext(ctx, "failed to build TLS config", "error", err)
-		os.Exit(1)
+		return 1
 	}
 
 	certFile := firstNonEmpty(os.Getenv("CHUR_TLS_CERT_PATH"), "/etc/chur/tls/tls.crt")
@@ -205,26 +210,21 @@ func main() {
 			}
 			slog.WarnContext(ctx, "TLS cert not found, generating self-signed certificate",
 				"dns_name", dnsName, "path", certFile)
-			tmpDir, err := os.MkdirTemp("", "chur-tls-*")
+			var cleanup func() error
+			certFile, keyFile, cleanup, err = tls.GenerateTempCert(dnsName)
 			if err != nil {
-				slog.ErrorContext(ctx, "failed to create temp dir for dev cert", "error", err)
-				os.Exit(1)
+				slog.ErrorContext(ctx, "failed to generate dev TLS cert", "error", err)
+				return 1
 			}
 			defer func() {
-				if err := os.RemoveAll(tmpDir); err != nil {
-					slog.ErrorContext(ctx, "failed to cleanup temp dir", "path", tmpDir, "error", err)
+				if err := cleanup(); err != nil {
+					slog.ErrorContext(ctx, "failed to cleanup temp dir", "error", err)
 				}
 			}()
-			certFile = tmpDir + "/tls.crt"
-			keyFile = tmpDir + "/tls.key"
-			if err := tls.GenerateTLSCert(dnsName, certFile, keyFile); err != nil {
-				slog.ErrorContext(ctx, "failed to generate dev TLS cert", "error", err)
-				os.Exit(1)
-			}
 		} else {
 			slog.ErrorContext(ctx, "TLS cert not found and CHUR_TLS_AUTO_GENERATE is not set",
 				"path", certFile, "hint", "mount certs to /etc/chur/tls or set CHUR_TLS_AUTO_GENERATE=1")
-			os.Exit(1)
+			return 1
 		}
 	}
 
@@ -263,21 +263,43 @@ func main() {
 		"max_concurrent", cfg.MaxConcurrent,
 	)
 
-	srvErr := make(chan error, 2)
+	var (
+		errMu    sync.Mutex
+		firstErr error
+	)
+	errCh := make(chan struct{}, 1)
+	getErr := func() error {
+		errMu.Lock()
+		defer errMu.Unlock()
+		return firstErr
+	}
+	notifyErr := func(err error) {
+		errMu.Lock()
+		defer errMu.Unlock()
+		if firstErr == nil {
+			firstErr = err
+			errCh <- struct{}{}
+		}
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(2)
 
 	go func() {
+		defer wg.Done()
 		slog.InfoContext(ctx, "starting chur-webhook admission",
 			"version", version, "addr", listenAddr, "tls_mode", tlsMode)
 		if err := httpSrv.ServeTLS(listener, certFile, keyFile); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			srvErr <- fmt.Errorf("admission server: %w", err)
+			notifyErr(fmt.Errorf("admission server: %w", err))
 			return
 		}
 	}()
 
 	go func() {
+		defer wg.Done()
 		slog.InfoContext(ctx, "starting chur-webhook health", "addr", healthSrv.Addr)
 		if err := healthSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			srvErr <- fmt.Errorf("health server: %w", err)
+			notifyErr(fmt.Errorf("health server: %w", err))
 			return
 		}
 	}()
@@ -285,8 +307,8 @@ func main() {
 	select {
 	case <-ctx.Done():
 		slog.InfoContext(ctx, "shutting down...")
-	case err := <-srvErr:
-		slog.ErrorContext(ctx, "server error, shutting down", "error", err)
+	case <-errCh:
+		slog.ErrorContext(ctx, "server error, shutting down", "error", getErr())
 		cancel()
 	}
 
@@ -300,17 +322,13 @@ func main() {
 		slog.ErrorContext(ctx, "admission server shutdown error", "error", err)
 	}
 
-	// If any server error was captured, exit non-zero so K8s restarts the pod.
-	for i := 0; i < 2; i++ {
-		select {
-		case err := <-srvErr:
-			if err != nil {
-				slog.ErrorContext(ctx, "exiting with error", "error", err)
-				os.Exit(1)
-			}
-		default:
-		}
+	// Both server goroutines have returned; any captured error is final.
+	wg.Wait()
+	if err := getErr(); err != nil {
+		slog.ErrorContext(ctx, "exiting with error", "error", err)
+		return 1
 	}
+	return 0
 }
 
 func firstNonEmpty(a, b string) string {
@@ -320,17 +338,26 @@ func firstNonEmpty(a, b string) string {
 	return b
 }
 
+// parseMaxSecretSizeEnv validates CHUR_MAX_SECRET_SIZE with the same parser
+// chur-init uses (internal/bytesize), so admission never accepts a value
+// the init container cannot parse. Returns the value unchanged, or an error.
+func parseMaxSecretSizeEnv(v string, volumeLimit resource.Quantity) (string, error) {
+	if v == "" {
+		return "", nil
+	}
+	maxBytes, err := bytesize.Parse(v)
+	if err != nil {
+		return "", fmt.Errorf("invalid CHUR_MAX_SECRET_SIZE %q: %w", v, err)
+	}
+	if volumeLimit.Value() < maxBytes {
+		return "", fmt.Errorf("CHUR_VOLUME_SIZE_LIMIT %s is smaller than CHUR_MAX_SECRET_SIZE %q", volumeLimit.String(), v)
+	}
+	return v, nil
+}
+
 func validateDNS1123Label(s string) error {
-	if len(s) == 0 || len(s) > 63 {
-		return errors.New("must be 1-63 characters long")
-	}
-	for i, r := range s {
-		if (r < 'a' || r > 'z') && (r < '0' || r > '9') && r != '-' {
-			return fmt.Errorf("invalid character %q at position %d", r, i)
-		}
-	}
-	if s[0] == '-' || s[len(s)-1] == '-' {
-		return fmt.Errorf("must not start or end with '-'")
+	if errs := validation.IsDNS1123Label(s); len(errs) > 0 {
+		return errors.New(strings.Join(errs, "; "))
 	}
 	return nil
 }

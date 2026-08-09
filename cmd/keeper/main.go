@@ -17,6 +17,10 @@ import (
 var version = "dev"
 
 func main() {
+	os.Exit(run())
+}
+
+func run() int {
 	ctx := context.Background()
 	logLevel := slog.LevelInfo
 	if v := os.Getenv("CHUR_KEEPER_LOG_LEVEL"); v == "debug" {
@@ -27,7 +31,7 @@ func main() {
 	cfg, err := keeper.ConfigFromEnv()
 	if err != nil {
 		slog.ErrorContext(ctx, "invalid keeper config", "error", err)
-		os.Exit(1)
+		return 1
 	}
 
 	switch cfg.BackendType {
@@ -35,7 +39,7 @@ func main() {
 		fsBackend, err := filesystem.NewWithMaxSize(cfg.FSRoot, cfg.MaxSecretSize)
 		if err != nil {
 			slog.ErrorContext(ctx, "filesystem backend: open root failed", "root", cfg.FSRoot, "error", err)
-			os.Exit(1)
+			return 1
 		}
 		cfg.Backend = fsBackend
 		defer func() {
@@ -48,40 +52,40 @@ func main() {
 		cmd := cfg.ExecCommand
 		if cmd == "" {
 			slog.ErrorContext(ctx, "CHUR_KEEPER_EXEC_COMMAND is required for exec backend")
-			os.Exit(1)
+			return 1
 		}
 		if _, err := os.Stat(cmd); err != nil {
 			slog.ErrorContext(ctx, "exec backend: command not found", "command", cmd, "error", err)
-			os.Exit(1)
+			return 1
 		}
 		execBackend, err := exec.New(cmd, cfg.ExecTimeout, cfg.ExecMaxStdout)
 		if err != nil {
 			slog.ErrorContext(ctx, "exec backend: invalid config", "error", err)
-			os.Exit(1)
+			return 1
 		}
 		cfg.Backend = execBackend
 
 	case "http":
 		if cfg.HTTPURL == "" {
 			slog.ErrorContext(ctx, "CHUR_KEEPER_HTTP_URL is required for http backend")
-			os.Exit(1)
+			return 1
 		}
 		hb, err := httpbackend.New(cfg.HTTPURL, cfg.HTTPTokenFile, cfg.HTTPTimeout, cfg.MaxSecretSize)
 		if err != nil {
 			slog.ErrorContext(ctx, "http backend: invalid config", "error", err)
-			os.Exit(1)
+			return 1
 		}
 		cfg.Backend = hb
 
 	default:
 		slog.ErrorContext(ctx, "unknown backend type", "backend", cfg.BackendType)
-		os.Exit(1)
+		return 1
 	}
 
 	tlsCfg, cleanup, err := keeper.ServerTLSConfig(ctx, cfg)
 	if err != nil {
 		slog.ErrorContext(ctx, "keeper tls config failed", "error", err)
-		os.Exit(1)
+		return 1
 	}
 	defer func() {
 		if err := cleanup(); err != nil {
@@ -92,7 +96,7 @@ func main() {
 	listener, err := net.Listen("tcp", cfg.Listen)
 	if err != nil {
 		slog.ErrorContext(ctx, "keeper: listen failed", "addr", cfg.Listen, "error", err)
-		os.Exit(1)
+		return 1
 	}
 	listener = netutil.LimitListener(listener, cfg.MaxConcurrent)
 	defer listener.Close()
@@ -107,6 +111,7 @@ func main() {
 
 	if err := keeper.Serve(ctx, cfg, tlsCfg, listener); err != nil {
 		slog.ErrorContext(ctx, "keeper exited", "error", err)
-		os.Exit(1)
+		return 1
 	}
+	return 0
 }

@@ -16,6 +16,9 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+
+	"github.com/lyafence/chur/internal/health"
+	"github.com/lyafence/chur/internal/metrics"
 )
 
 func newTestServer(t *testing.T) *Server {
@@ -25,6 +28,12 @@ func newTestServer(t *testing.T) *Server {
 		t.Fatalf("NewServer: %v", err)
 	}
 	return srv
+}
+
+func testHealthHandler() http.Handler {
+	mux := http.NewServeMux()
+	health.RegisterHealthEndpoints(mux, "webhook", metrics.Handler())
+	return mux
 }
 
 func mustEncodePod(t *testing.T, pod *corev1.Pod) []byte {
@@ -316,7 +325,7 @@ func TestServer_Mutate_DryRun_NoPatch(t *testing.T) {
 
 func TestHealthz(t *testing.T) {
 	t.Parallel()
-	h := HealthHandler()
+	h := testHealthHandler()
 	srv := httptest.NewServer(h)
 	defer srv.Close()
 
@@ -339,7 +348,7 @@ func TestHealthz(t *testing.T) {
 
 func TestHealthz_WrongMethod(t *testing.T) {
 	t.Parallel()
-	h := HealthHandler()
+	h := testHealthHandler()
 	srv := httptest.NewServer(h)
 	defer srv.Close()
 
@@ -355,7 +364,7 @@ func TestHealthz_WrongMethod(t *testing.T) {
 
 func TestReadyz(t *testing.T) {
 	t.Parallel()
-	h := HealthHandler()
+	h := testHealthHandler()
 	srv := httptest.NewServer(h)
 	defer srv.Close()
 
@@ -429,7 +438,7 @@ func TestServer_Mutate_AllowsPod_NoAnnotations(t *testing.T) {
 
 func TestHealthHandler_Metrics(t *testing.T) {
 	t.Parallel()
-	h := HealthHandler()
+	h := testHealthHandler()
 	srv := httptest.NewServer(h)
 	defer srv.Close()
 
@@ -456,7 +465,7 @@ func TestHealthHandler_Metrics(t *testing.T) {
 
 func TestHealthHandler_UnknownPath(t *testing.T) {
 	t.Parallel()
-	h := HealthHandler()
+	h := testHealthHandler()
 	srv := httptest.NewServer(h)
 	defer srv.Close()
 

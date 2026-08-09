@@ -28,10 +28,27 @@ Default: `Fail`. When the webhook is unreachable, ALL Pod creation is blocked.
 During migration to chur, set `webhook.failurePolicy=Ignore` temporarily, then
 switch to `Fail` after verifying the webhook is stable.
 
+### High availability
+
+The webhook is fail-closed by default, so run at least 2 replicas
+(`replicaCount: 2`) in production: a single replica becomes a single point of
+failure for Pod creation during drain, node loss, or upgrades. Admission calls
+are load-balanced by the ClusterIP Service; a PodDisruptionBudget
+(`pdb.enabled`, default true) protects against voluntary disruptions.
+
+- The webhook never intercepts its own namespace (see `_helpers.tpl`
+  `chur.webhook.namespaceSelector`) — no self-mutation deadlock.
+- On clusters >= 1.30 the chart adds a CEL `matchConditions` entry so the
+  webhook is only called for Pods carrying `chur.io/provider`
+  (`webhook.matchConditions.enabled`, default true). On 1.28-1.29 the field is
+  omitted automatically.
+
 ### Refs in logs
 
 Secret references may appear in init container and keeper logs for
 debuggability (see T8 in THREAT_MODEL.md). Secret values are never logged.
+All logged values are sanitized (internal/logsafe) — CR/LF/control chars
+cannot reach the log.
 
 ## Debugging
 

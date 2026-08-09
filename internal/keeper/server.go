@@ -11,10 +11,12 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
 	"github.com/lyafence/chur/internal/health"
+	"github.com/lyafence/chur/internal/logsafe"
 	"github.com/lyafence/chur/internal/metrics"
 	"github.com/lyafence/chur/internal/provider"
 	churtls "github.com/lyafence/chur/internal/tls"
@@ -50,8 +52,6 @@ func Serve(ctx context.Context, cfg *Config, tlsCfg *tls.Config, listener net.Li
 		MaxHeaderBytes:    1 << 20,
 	}
 
-	srvErr := make(chan error, 2)
-
 	var healthSrv *http.Server
 	if cfg.HealthListen != "" {
 		healthMux := http.NewServeMux()
@@ -65,16 +65,46 @@ func Serve(ctx context.Context, cfg *Config, tlsCfg *tls.Config, listener net.Li
 			IdleTimeout:       30 * time.Second,
 			MaxHeaderBytes:    1 << 20,
 		}
+	}
+
+	var (
+		errMu    sync.Mutex
+		firstErr error
+	)
+	errCh := make(chan struct{}, 1)
+	getErr := func() error {
+		errMu.Lock()
+		defer errMu.Unlock()
+		return firstErr
+	}
+	notifyErr := func(err error) {
+		errMu.Lock()
+		defer errMu.Unlock()
+		if firstErr == nil {
+			firstErr = err
+			errCh <- struct{}{}
+		}
+	}
+
+	var wg sync.WaitGroup
+	if cfg.HealthListen != "" {
+		wg.Add(1)
+	}
+	wg.Add(1)
+
+	if cfg.HealthListen != "" {
 		go func() {
+			defer wg.Done()
 			slog.InfoContext(ctx, "keeper health server starting", "addr", cfg.HealthListen)
 			if err := healthSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 				slog.ErrorContext(ctx, "keeper health server error", "error", err)
-				srvErr <- err
+				notifyErr(err)
 				return
 			}
 		}()
 	}
 	go func() {
+		defer wg.Done()
 		slog.InfoContext(ctx, "keeper server starting",
 			"addr", listener.Addr().String(),
 			"tls_mode", cfg.TLSMode,
@@ -82,7 +112,7 @@ func Serve(ctx context.Context, cfg *Config, tlsCfg *tls.Config, listener net.Li
 		)
 		if err := srv.ServeTLS(listener, "", ""); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			slog.ErrorContext(ctx, "keeper server error", "error", err)
-			srvErr <- err
+			notifyErr(err)
 			return
 		}
 	}()
@@ -90,8 +120,8 @@ func Serve(ctx context.Context, cfg *Config, tlsCfg *tls.Config, listener net.Li
 	select {
 	case <-ctx.Done():
 		slog.InfoContext(ctx, "keeper shutting down...")
-	case err := <-srvErr:
-		slog.ErrorContext(ctx, "keeper server failed, shutting down", "error", err)
+	case <-errCh:
+		slog.ErrorContext(ctx, "keeper server failed, shutting down", "error", getErr())
 		cancel()
 	}
 
@@ -105,14 +135,10 @@ func Serve(ctx context.Context, cfg *Config, tlsCfg *tls.Config, listener net.Li
 	}
 	shutdownErr := srv.Shutdown(shutdownCtx)
 
-	for i := 0; i < 2; i++ {
-		select {
-		case err := <-srvErr:
-			if err != nil {
-				return err
-			}
-		default:
-		}
+	// Both server goroutines have returned; any captured error is final.
+	wg.Wait()
+	if err := getErr(); err != nil {
+		return err
 	}
 	return shutdownErr
 }
@@ -166,12 +192,12 @@ func handleGetSecret(b provider.SecretProvider, maxSize int64, sem chan struct{}
 
 		if err != nil {
 			slog.WarnContext(r.Context(), "keeper: backend get failed",
-				"ref", req.Ref,
+				"ref", logsafe.Value(req.Ref),
 				"backend", backendName,
 				"duration_ms", durationMs,
 				"result", "error",
 			)
-			slog.DebugContext(r.Context(), "keeper: backend get failed details", "error", err)
+			slog.DebugContext(r.Context(), "keeper: backend get failed details", "error", logsafe.Value(err.Error()))
 			recordKeeperMetric(backendName, "error", start)
 			writeError(r.Context(), w, "internal server error", http.StatusInternalServerError)
 			return
@@ -179,7 +205,7 @@ func handleGetSecret(b provider.SecretProvider, maxSize int64, sem chan struct{}
 
 		if int64(len(data)) > maxSize {
 			slog.WarnContext(r.Context(), "keeper: secret exceeds max size",
-				"ref", req.Ref,
+				"ref", logsafe.Value(req.Ref),
 				"backend", backendName,
 				"duration_ms", durationMs,
 				"result", "error",
@@ -191,7 +217,7 @@ func handleGetSecret(b provider.SecretProvider, maxSize int64, sem chan struct{}
 		}
 
 		slog.InfoContext(r.Context(), "keeper: secret fetched",
-			"ref", req.Ref,
+			"ref", logsafe.Value(req.Ref),
 			"backend", backendName,
 			"duration_ms", durationMs,
 			"result", "ok",
@@ -236,17 +262,9 @@ func ServerTLSConfig(ctx context.Context, cfg *Config) (*tls.Config, func() erro
 			if dnsName == "" {
 				dnsName = "localhost"
 			}
-			tmpDir, err := os.MkdirTemp("", "chur-keeper-tls-*")
+			var err error
+			certFile, keyFile, cleanup, err = churtls.GenerateTempCert(dnsName)
 			if err != nil {
-				return nil, nil, fmt.Errorf("keeper: temp dir: %w", err)
-			}
-			cleanup = func() error { return os.RemoveAll(tmpDir) }
-			certFile = tmpDir + "/tls.crt"
-			keyFile = tmpDir + "/tls.key"
-			if err := churtls.GenerateTLSCert(dnsName, certFile, keyFile); err != nil {
-				if cleanErr := cleanup(); cleanErr != nil {
-					slog.WarnContext(ctx, "keeper: failed to clean up temp dir after cert generation failure", "error", cleanErr)
-				}
 				return nil, nil, fmt.Errorf("keeper: generate cert: %w", err)
 			}
 		}

@@ -59,6 +59,14 @@ namespaceSelector:
         - {{ .Release.Namespace }}
 {{- end }}
 
+{{- define "chur.webhook.matchConditions" -}}
+{{- if and .Values.webhook.matchConditions.enabled (semverCompare ">=1.30-0" .Capabilities.KubeVersion.Version) }}
+matchConditions:
+  - name: "has-chur-provider-annotation"
+    expression: "has(object.metadata.annotations) && 'chur.io/provider' in object.metadata.annotations"
+{{- end }}
+{{- end }}
+
 {{- define "chur.webhook.tlsChecksum" -}}
 {{- if eq .Values.tls.provider "helmGenerated" }}
 {{- $secret := lookup "v1" "Secret" .Release.Namespace .Values.tls.userSecret.name }}

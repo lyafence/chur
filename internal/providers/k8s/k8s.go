@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -60,6 +61,7 @@ func init() {
 		if err != nil {
 			return nil, fmt.Errorf("k8s: in-cluster config: %w", err)
 		}
+		config.Timeout = 30 * time.Second
 		client, err := kubernetes.NewForConfig(config)
 		if err != nil {
 			return nil, fmt.Errorf("k8s: create client: %w", err)

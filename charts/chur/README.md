@@ -46,6 +46,16 @@ helm install chur . \
 | `tls.provider` | `certManager` | `certManager`, `helmGenerated`, or `userSecret` |
 | `mtls.caBundle` | `""` | PEM-encoded CA cert for verifying the API server's client cert (mtls only) |
 
+## Webhook behavior
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `webhook.failurePolicy` | `Fail` | Fail-closed: a down webhook blocks Pod creation. Set `Ignore` temporarily during migration |
+| `webhook.timeoutSeconds` | `5` | Admission request timeout |
+| `webhook.matchConditions.enabled` | `true` | Only call the webhook for Pods carrying `chur.io/provider` (CEL match condition, rendered only on clusters >= 1.30) |
+| `replicaCount` (top-level) | `1` | Number of webhook pod replicas. Run at least 2 in production: the webhook is fail-closed, a single replica is a single point of failure for Pod creation |
+| `webhook.skipNamespaces` | `[kube-system]` | Namespaces never intercepted; the release namespace is always excluded |
+
 ## RBAC
 
 When using the `k8s` provider, the `chur-init` init container needs permission

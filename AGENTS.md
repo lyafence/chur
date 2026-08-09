@@ -37,6 +37,7 @@
 | `internal/providers/local/` | Local file provider (bare-metal) |
 | `internal/providers/k8s/` | Kubernetes Secret provider |
 | `internal/metrics/` | Prometheus metric declarations and custom registry |
+| `internal/logsafe/` | Log value sanitizer (CR/LF/control chars) |
 | `internal/validate/` | Input validation (filename-safe refs, secret keys) |
 | `internal/keeper/` | Keeper server, config, backend dispatch |
 | `internal/keeper/filesystem/` | Filesystem backend for chur-keeper |
@@ -174,6 +175,7 @@ or `http`, use exec — do not request new backend features.
 - `MutatePod` parses `chur.io/*` annotations, injects tmpfs volume + chur-init init container + volume mounts.
 - Idempotent: guards against `reinvocationPolicy: IfNeeded` duplicates.
 - TLS: `server` and `mtls` modes, self-signed cert generation for dev.
+- HA: CEL matchConditions, PDB, replicaCount (details in chart values).
 
 **chur-keeper (optional):**
 - Binary: `cmd/keeper/`, 9.6 MB. stdlib-only except prometheus client for `/metrics`.
@@ -183,7 +185,7 @@ or `http`, use exec — do not request new backend features.
 - E2E: `TestE2E_KeeperProvider` in `test/e2e/`.
 
 **CI/CD:**
-- GitHub Actions: `ci.yml` (lint → test → build + vuln), `release.yml` (Docker multi-arch + Helm chart).
+- GitHub Actions: `ci.yml`, `codeql.yml`, `validate-release.yml`, `release.yml`.
 - Dependabot: gomod, docker, actions.
 
 ## Design Decisions
